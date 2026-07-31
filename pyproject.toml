@@ -36,7 +36,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: System :: Monitoring",
 ]
-dependencies = ["mcp>=1.2.0", "tiktoken>=0.13.0"]
+dependencies = ["mcp>=1.2.0,<2", "tiktoken>=0.13.0"]
 
 [project.urls]
 Homepage = "https://github.com/douglasmonsky/codex-usage-tracker"
