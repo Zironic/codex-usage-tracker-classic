@@ -193,10 +193,13 @@ def usage_allowance_diagnostics(
 @mcp.tool()
 def usage_allowance_export(
     window_kind: str | None = None,
-    limit: int = 10000,
+    limit: int = 0,
     include_archived: bool = False,
+    export_format: str = "compact",
+    from_plan: str | None = None,
+    to_plan: str | None = None,
 ) -> dict[str, Any]:
-    """Return strict-privacy allowance evidence bundle for manual sharing."""
+    """Return compact v2 evidence, or verbose v1 for compatibility."""
     return build_allowance_export_report(
         db_path=DEFAULT_DB_PATH,
         allowance_path=DEFAULT_ALLOWANCE_PATH,
@@ -204,6 +207,9 @@ def usage_allowance_export(
         include_archived=include_archived,
         window_kind=window_kind,
         limit=_report_limit(limit),
+        export_format=export_format,
+        from_plan=from_plan,
+        to_plan=to_plan,
     ).payload
 
 
