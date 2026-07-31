@@ -312,6 +312,7 @@ def _revision(rows: list[dict[str, object]]) -> str:
         "window_kind",
         "used_percent",
         "resets_at",
+        "plan_type",
         "limit_id",
         "is_archived",
         "model",
