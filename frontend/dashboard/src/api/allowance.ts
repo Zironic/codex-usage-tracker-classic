@@ -157,7 +157,7 @@ export type AllowanceDiagnosticsPayload = {
   notes: string[];
 };
 
-export type AllowanceEvidenceExportPayload = {
+export type AllowanceEvidenceExportV1Payload = {
   schema: 'codex-usage-tracker-allowance-evidence-export-v1';
   generated_at: string;
   privacy_mode: 'strict';
@@ -168,10 +168,72 @@ export type AllowanceEvidenceExportPayload = {
   notes: string[];
 };
 
+export type AllowanceCompactSpanRow = [
+  startObservedDate: string | null,
+  endObservedDate: string | null,
+  startUsedPercent: number | null,
+  endUsedPercent: number | null,
+  estimatedUsageCredits: number | null,
+  rowCount: number,
+];
+
+export type AllowanceEvidenceExportV2Payload = {
+  schema: 'codex-usage-tracker-allowance-evidence-export-v2';
+  generated_at: string;
+  privacy_mode: 'strict';
+  request: {
+    window_kind: AllowanceWindowKind | null;
+    include_archived: boolean;
+    limit: number | null;
+  };
+  coverage: {
+    matched_observation_count: number;
+    exported_observation_count: number;
+    start_date: string | null;
+    end_date: string | null;
+    window_count: number;
+    span_count: number;
+    truncated: boolean;
+  };
+  layout: {
+    span_columns: readonly string[];
+    conventions: Record<string, string>;
+  };
+  summary: {
+    primary_window_kind: AllowanceWindowKind | null;
+    primary_evidence_grade: AllowanceEvidenceGrade;
+    candidate_change_count: number;
+    research_readiness: AllowanceResearchReadiness;
+  };
+  windows: Array<{
+    scope: {
+      window_kind: AllowanceWindowKind;
+      plan_type: string | null;
+      limit_id: string | null;
+    };
+    observation_count: number;
+    positive_span_count: number;
+    evidence_grade: AllowanceEvidenceGrade;
+    span_stats: AllowanceWindowReport['span_stats'];
+    span_rows: AllowanceCompactSpanRow[];
+    span_confidence: {
+      default: string | null;
+      overrides: Array<[number, string | Record<string, number>]>;
+    };
+    change_candidates: Array<Record<string, unknown>>;
+  }>;
+  notes: string[];
+};
+
+export type AllowanceEvidenceExportPayload =
+  | AllowanceEvidenceExportV1Payload
+  | AllowanceEvidenceExportV2Payload;
+
 type AllowanceRequest = {
   includeArchived?: boolean;
   limit?: number | null;
   windowKind?: AllowanceWindowKind;
+  format?: 'compact' | 'verbose';
 };
 
 export async function loadAllowanceHistory(
@@ -194,8 +256,12 @@ export async function loadAllowanceEvidenceExport(
   runtime: ContextRuntime,
   options: AllowanceRequest = {},
 ): Promise<AllowanceEvidenceExportPayload> {
-  return loadAllowancePayload(runtime, '/api/allowance/export', requestParams(options, false),
-    'codex-usage-tracker-allowance-evidence-export-v1', 'Allowance evidence export');
+  const format = options.format ?? 'compact';
+  const expectedSchema = format === 'compact'
+    ? 'codex-usage-tracker-allowance-evidence-export-v2'
+    : 'codex-usage-tracker-allowance-evidence-export-v1';
+  return loadAllowancePayload(runtime, '/api/allowance/export', requestParams({ ...options, format }, false),
+    expectedSchema, 'Allowance evidence export');
 }
 
 function requestParams(options: AllowanceRequest, includePrivacyMode: boolean): URLSearchParams {
@@ -204,6 +270,7 @@ function requestParams(options: AllowanceRequest, includePrivacyMode: boolean): 
   });
   if (options.includeArchived) params.set('include_archived', '1');
   if (options.windowKind) params.set('window_kind', options.windowKind);
+  if (options.format) params.set('format', options.format);
   if (includePrivacyMode) params.set('privacy_mode', 'normal');
   return params;
 }
