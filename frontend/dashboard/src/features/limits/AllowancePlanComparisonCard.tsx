@@ -23,6 +23,8 @@ export function AllowancePlanComparisonCard({
   }
 
   const transition = comparison.transition;
+  const before = comparison.before;
+  const after = comparison.after;
   const primaryPercent = comparison.relative_meter_size.after_as_percent_of_before;
   const earlyPercent = comparison.early_interval_estimate.after_as_percent_of_before
     ?? (comparison.early_interval_estimate.after_to_before_ratio === null
@@ -31,8 +33,9 @@ export function AllowancePlanComparisonCard({
   const displayedPercent = primaryPercent ?? earlyPercent;
   const multiplier = comparison.relative_meter_size.before_to_after_multiplier;
   const interval = comparison.statistics.ratio_confidence_interval_95;
-  const permutation = comparison.statistics.permutation;
-  const hasCompletedComparison = comparison.before !== null && comparison.after !== null;
+  const intervalLow = interval?.low ?? null;
+  const intervalHigh = interval?.high ?? null;
+  const permutationP = comparison.statistics.permutation?.two_sided_p_value ?? null;
   const exploratory = comparison.status === 'insufficient_completed_cycles'
     || comparison.status === 'descriptive_only';
 
@@ -74,22 +77,22 @@ export function AllowancePlanComparisonCard({
             </div>
           </div>
 
-          {hasCompletedComparison ? (
+          {before !== null && after !== null ? (
             <div className={styles.comparisonCohorts}>
-              <CohortSummary label="Before" cohort={comparison.before} />
-              <CohortSummary label="After" cohort={comparison.after} />
+              <CohortSummary label="Before" cohort={before} />
+              <CohortSummary label="After" cohort={after} />
             </div>
           ) : null}
 
           <div className={styles.comparisonEvidence}>
-            {interval?.low !== null && interval?.high !== null ? (
+            {intervalLow !== null && intervalHigh !== null ? (
               <span>
-                95% ratio interval: {(interval.low * 100).toFixed(1)}%–
-                {(interval.high * 100).toFixed(1)}%
+                95% ratio interval: {(intervalLow * 100).toFixed(1)}%–
+                {(intervalHigh * 100).toFixed(1)}%
               </span>
             ) : null}
-            {permutation?.two_sided_p_value !== null ? (
-              <span>Fixed-label p={permutation.two_sided_p_value.toFixed(4)}</span>
+            {permutationP !== null ? (
+              <span>Fixed-label p={permutationP.toFixed(4)}</span>
             ) : null}
             {comparison.statistics.cliffs_delta_after_vs_before !== null ? (
               <span>
