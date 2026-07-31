@@ -155,11 +155,6 @@ def capacity_cycle_exclusion_reason(
     return None
 
 
-def _eligible_cycle(row: Mapping[str, Any]) -> bool:
-    """Compatibility wrapper for older tests and internal callers."""
-    return capacity_cycle_exclusion_reason(row) is None
-
-
 def _normalized_cycle(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "cycle_id": str(row["cycle_id"]),
