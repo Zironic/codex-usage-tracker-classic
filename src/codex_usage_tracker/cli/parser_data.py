@@ -275,7 +275,17 @@ def _add_allowance_intelligence_parsers(
         "allowance-export",
         help="Build strict-privacy allowance evidence bundle for manual sharing",
     )
-    _add_allowance_intelligence_filters(export, default_limit=10000)
+    _add_allowance_intelligence_filters(export, default_limit=0)
+    export.add_argument(
+        "--format",
+        dest="export_format",
+        choices=("compact", "verbose"),
+        default="compact",
+        help=(
+            "compact writes the LLM-oriented v2 table format; "
+            "verbose writes the compatibility v1 object format"
+        ),
+    )
     export.add_argument("--output", type=Path, default=None)
     export.add_argument("--json", action="store_true", dest="as_json")
 
