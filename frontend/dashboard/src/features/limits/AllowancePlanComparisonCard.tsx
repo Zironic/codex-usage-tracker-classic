@@ -15,7 +15,9 @@ export function AllowancePlanComparisonCard({
     return loading ? (
       <Surface className={styles.comparisonCard}>
         <p className={styles.comparisonEyebrow}>Plan-switch capacity</p>
-        <p>Calculating the weekly meter before and after the subscription-plan change…</p>
+        <p>
+          Calculating the weekly meter before and after the subscription-plan change…
+        </p>
       </Surface>
     ) : null;
   }
@@ -29,6 +31,7 @@ export function AllowancePlanComparisonCard({
   const displayedPercent = primaryPercent ?? earlyPercent;
   const multiplier = comparison.relative_meter_size.before_to_after_multiplier;
   const interval = comparison.statistics.ratio_confidence_interval_95;
+  const permutation = comparison.statistics.permutation;
   const hasCompletedComparison = comparison.before !== null && comparison.after !== null;
   const exploratory = comparison.status === 'insufficient_completed_cycles'
     || comparison.status === 'descriptive_only';
@@ -40,7 +43,9 @@ export function AllowancePlanComparisonCard({
           <p className={styles.comparisonEyebrow}>Plan-switch capacity</p>
           <h2>Post-switch weekly meter</h2>
         </div>
-        <StatusBadge tone={statusTone(comparison.status)}>{statusLabel(comparison.status)}</StatusBadge>
+        <StatusBadge tone={statusTone(comparison.status)}>
+          {statusLabel(comparison.status)}
+        </StatusBadge>
       </div>
 
       {comparison.status === 'no_transition' ? (
@@ -54,13 +59,17 @@ export function AllowancePlanComparisonCard({
         <>
           <div className={styles.comparisonHero}>
             <strong className={styles.comparisonRatio}>
-              {displayedPercent === null ? 'Not enough data' : `${displayedPercent.toFixed(1)}%`}
+              {displayedPercent === null
+                ? 'Not enough data'
+                : `${displayedPercent.toFixed(1)}%`}
             </strong>
             <div>
               <p>of the previous weekly capacity</p>
               <p className={styles.comparisonTransition}>
                 {formatPlan(transition.from_plan)} → {formatPlan(transition.to_plan)}
-                {multiplier === null ? '' : ` · previous meter estimated ${multiplier.toFixed(2)}× larger`}
+                {multiplier === null
+                  ? ''
+                  : ` · previous meter estimated ${multiplier.toFixed(2)}× larger`}
               </p>
             </div>
           </div>
@@ -74,26 +83,32 @@ export function AllowancePlanComparisonCard({
 
           <div className={styles.comparisonEvidence}>
             {interval?.low !== null && interval?.high !== null ? (
-              <span>95% ratio interval: {(interval.low * 100).toFixed(1)}%–{(interval.high * 100).toFixed(1)}%</span>
+              <span>
+                95% ratio interval: {(interval.low * 100).toFixed(1)}%–
+                {(interval.high * 100).toFixed(1)}%
+              </span>
             ) : null}
-            {comparison.statistics.permutation?.two_sided_p_value !== null
-              && comparison.statistics.permutation ? (
-                <span>Fixed-label p={comparison.statistics.permutation.two_sided_p_value.toFixed(4)}</span>
-              ) : null}
+            {permutation?.two_sided_p_value !== null ? (
+              <span>Fixed-label p={permutation.two_sided_p_value.toFixed(4)}</span>
+            ) : null}
             {comparison.statistics.cliffs_delta_after_vs_before !== null ? (
-              <span>Cliff’s δ={comparison.statistics.cliffs_delta_after_vs_before.toFixed(3)}</span>
+              <span>
+                Cliff’s δ=
+                {comparison.statistics.cliffs_delta_after_vs_before.toFixed(3)}
+              </span>
             ) : null}
           </div>
 
           {exploratory ? (
             <p className={styles.comparisonCaveats}>
-              Exploratory estimate: too few eligible completed cycles exist on one side of the
-              switch for a supported claim. The interval estimate is shown only as early evidence.
+              Exploratory estimate: too few eligible completed cycles exist on one side of
+              the switch for a supported claim. The interval estimate is shown only as early
+              evidence.
             </p>
           ) : null}
           <p className={styles.comparisonCaveats}>
-            Based on locally visible, model-normalized Codex usage. This is not an official OpenAI
-            allowance or billing ledger.
+            Based on locally visible, model-normalized Codex usage. This is not an official
+            OpenAI allowance or billing ledger.
           </p>
         </>
       )}
@@ -112,7 +127,10 @@ function CohortSummary({
     <div>
       <span>{label} · {formatPlan(cohort.plan_type)}</span>
       <strong>{formatCredits(cohort.median_credits_per_percent)} credits/%</strong>
-      <small>{cohort.eligible_cycle_count} eligible of {cohort.observed_cycle_count} completed-cycle records</small>
+      <small>
+        {cohort.eligible_cycle_count} eligible of {cohort.observed_cycle_count}
+        {' '}completed-cycle records
+      </small>
     </div>
   );
 }
@@ -123,7 +141,7 @@ function formatCredits(value: number | null): string {
 
 function formatPlan(value: string | null): string {
   if (!value) return 'Unknown plan';
-  return value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  return value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
 function statusLabel(status: AllowancePlanComparison['status']): string {
@@ -137,8 +155,12 @@ function statusLabel(status: AllowancePlanComparison['status']): string {
   }
 }
 
-function statusTone(status: AllowancePlanComparison['status']): 'positive' | 'warning' | 'neutral' {
+function statusTone(
+  status: AllowancePlanComparison['status'],
+): 'positive' | 'caution' | 'neutral' {
   if (status === 'supported_smaller') return 'positive';
-  if (status === 'supported_larger' || status === 'insufficient_completed_cycles') return 'warning';
+  if (status === 'supported_larger' || status === 'insufficient_completed_cycles') {
+    return 'caution';
+  }
   return 'neutral';
 }
