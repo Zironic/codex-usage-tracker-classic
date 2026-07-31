@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_wemake_is_not_a_repository_or_ci_gate() -> None:
+    config = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dev_dependencies = config["project"]["optional-dependencies"]["dev"]
+
+    assert not any("wemake" in dependency.lower() for dependency in dev_dependencies)
+    assert "agent_maintainer" not in config["tool"]
+    assert not (_REPO_ROOT / "scripts" / "check_wemake_baseline.py").exists()
+
+    workflows = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((_REPO_ROOT / ".github" / "workflows").glob("*.yml"))
+    ).lower()
+    assert "wemake" not in workflows
+    assert "check_wemake_baseline" not in workflows
+
+
+def test_maintainability_policy_has_one_non_stylistic_guardrail_per_concern() -> None:
+    config = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dev_dependencies = config["project"]["optional-dependencies"]["dev"]
+
+    assert not any("git-agent-ratchet" in dependency for dependency in dev_dependencies)
+    assert any(dependency.startswith("xenon") for dependency in dev_dependencies)
+    maintainability = (
+        _REPO_ROOT / "scripts" / "check_kernel_maintainability.py"
+    ).read_text(encoding="utf-8")
+    assert "max_physical" not in maintainability
+    assert "max_source" not in maintainability
+    assert maintainability.count('"C"') == 1
+    assert maintainability.count('"B"') == 2
+    for name in (
+        "git-agent-ratchet-duplicate-helpers.json",
+        "git-agent-ratchet-max-file-lines.json",
+        "git-agent-ratchet-private-imports.json",
+    ):
+        assert not (_REPO_ROOT / ".agent-maintainer" / name).exists()
+
+
+def test_repository_verification_wrappers_do_not_use_generic_maintainer_profiles() -> None:
+    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
+
+    assert "agent_maintainer verify" not in justfile
+    for command in (
+        "scripts/check_kernel_scope.py",
+        "scripts/generate_kernel_manifests.py --check",
+        "-m ruff check",
+        "-m mypy",
+        "-m pytest",
+        "-m pyright",
+        "scripts/check_release.py",
+        "scripts/check_kernel_maintainability.py",
+    ):
+        assert command in justfile
+
+    for retired_command in (
+        "dashboard:",
+        "check_product_complexity.py",
+        "agent_maintainer verify",
+        "-m tach check",
+    ):
+        assert retired_command not in justfile
+
+
+def test_ci_runs_scale_invariants_without_a_host_wall_clock_gate() -> None:
+    workflow = (
+        _REPO_ROOT / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
+
+    assert "tests/kernel/test_ingest_*.py" not in workflow
+    for path in (
+        "tests/kernel/test_ingest_performance.py",
+        "tests/kernel/allowance/test_performance.py",
+        "tests/kernel/evidence/test_performance.py",
+        "tests/kernel/interfaces/test_performance.py",
+        "tests/kernel/query/test_performance.py",
+    ):
+        assert workflow.count(path) == 1
+        assert f"--ignore={path}" in workflow
+    assert 'if [ "$MATRIX_PYTHON" = "3.14" ]; then' not in workflow
+    assert "Run synthetic scale invariants" in workflow
+    assert "scripts/run_performance_suite.py --lane invariants" in workflow
+    assert "github_hosted_qualified" not in workflow
+    assert "CODEX_USAGE_PERFORMANCE_REPORT" not in workflow
+    assert "-p tests.kernel.performance_qualification" not in workflow
+    assert "timeout --signal" not in workflow
+    assert "137" not in workflow
+    assert "continue-on-error:" not in workflow
+    assert "Summarize performance qualification" not in workflow
+    assert "Upload performance qualification telemetry" not in workflow
+    assert "scripts/run_performance_suite.py --lane invariants" in justfile
+    assert justfile.count("--ignore=tests/kernel/") >= 5
+    assert "tests/kernel/test_ci_performance_qualification.py" in justfile
+
+
+def test_hosted_performance_workflow_repeats_pinned_image_qualification() -> None:
+    workflow = (
+        _REPO_ROOT / ".github" / "workflows" / "performance-qualification.yml"
+    ).read_text(encoding="utf-8")
+    qualification = (
+        _REPO_ROOT / "docs" / "quality" / "CI_PERFORMANCE_QUALIFICATION.md"
+    ).read_text(encoding="utf-8")
+
+    assert "name: Repeated hosted performance qualification" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "schedule:" in workflow
+    assert "runs-on: ubuntu-24.04" in workflow
+    assert "for repetition in 1 2 3 4 5" in workflow
+    assert "--lane github_hosted_qualified" in workflow
+    assert "scripts/run_performance_suite.py" in workflow
+    assert "timeout --signal" not in workflow
+    assert "137" not in workflow
+    assert "scripts/aggregate_performance_qualification.py" in workflow
+    assert "performance-qualification-summary.json" in workflow
+    assert "continue-on-error:" not in workflow
+    assert "self-hosted" not in workflow
+    assert "controlled" not in workflow.lower()
+    assert "--lane strict" in qualification
+    assert "Strict mode has no runner escape" in qualification
+    assert "five independent unprofiled repetitions" in qualification
+    assert "median" in qualification
+    assert "`suite_timeout`" in qualification

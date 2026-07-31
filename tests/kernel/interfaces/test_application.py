@@ -1,0 +1,590 @@
+from __future__ import annotations
+
+import shutil
+import threading
+from pathlib import Path
+
+import pytest
+
+import codex_usage_tracker.kernel.application.service as application_service
+from codex_usage_tracker.kernel.application import (
+    KernelApplication,
+    RuntimePaths,
+    build_application,
+)
+from codex_usage_tracker.kernel.application.jobs import JobReader
+from codex_usage_tracker.kernel.hydration import HydrationPreset
+from codex_usage_tracker.kernel.ingest import (
+    KernelIngestor,
+    RefreshTrigger,
+    refresh_request_hash,
+)
+from codex_usage_tracker.kernel.lease import RefreshLeaseRepository
+from codex_usage_tracker.kernel.operational import initialize_operational_database
+
+from .support import (
+    ORACLE_ROOT,
+    active_runtime,
+    logical_split_runtime,
+    synthetic_sources,
+)
+
+
+def test_read_use_cases_share_one_generation_and_never_write(tmp_path: Path) -> None:
+    runtime = active_runtime(tmp_path)
+    app = KernelApplication(
+        runtime,
+        worker_launcher=lambda _paths, _preset: None,
+        source_provider=lambda _home: synthetic_sources(),
+    )
+    operational_before = runtime.kernel.operational.read_bytes()
+    analytical_before = runtime.kernel.analytical.read_bytes()
+
+    status = app.status()
+    query = app.query(
+        {
+            "requests": [
+                {
+                    "dataset": "calls",
+                    "operation": "rows",
+                    "dimensions": ["call", "model"],
+                    "measures": ["total_tokens"],
+                    "limit": 10,
+                }
+            ]
+        }
+    )
+    selector = query["results"][0]["evidence_selectors"][0]
+    evidence = app.evidence(
+        {"selector": selector, "view": "summary", "limit": 10}
+    )
+    allowance = app.allowance({"limit": 10})
+    stream = app.live(last_event_id=0, limit=10, origin="http://127.0.0.1")
+
+    assert status["generation"] == 1
+    assert status["rate_card"] == {
+        "configured": False,
+        "status": "absent",
+        "source": None,
+    }
+    assert query["results"][0]["generation"] == 1
+    assert evidence["generation"] == 1
+    assert allowance["generation"] == 1
+    assert stream[0].startswith("id: 1\nevent: generation_committed")
+    assert runtime.kernel.operational.read_bytes() == operational_before
+    assert runtime.kernel.analytical.read_bytes() == analytical_before
+
+
+def test_query_guidance_is_available_without_a_database_or_refresh(
+    tmp_path: Path,
+) -> None:
+    launches: list[RuntimePaths] = []
+    app = KernelApplication(
+        RuntimePaths(tmp_path / "codex-home", tmp_path / "cache"),
+        worker_launcher=lambda paths, _preset: launches.append(paths),
+    )
+
+    response = app.query({"requests": [], "include_guidance": True})
+
+    assert response["results"] == []
+    assert response["guidance"]["schema"].endswith(".v1")
+    assert tuple(response["guidance"]["templates"]) == (
+        "allowance",
+        "concentration",
+        "context_composition",
+        "latest_incremental_change",
+        "model_effort",
+        "period_comparison",
+        "subagents",
+        "top_threads",
+        "tools",
+        "turns",
+        "week_over_week",
+        "weekly_drivers",
+    )
+    assert launches == []
+    assert not app.paths.kernel.operational.exists()
+
+
+def test_query_rejects_an_empty_batch_without_guidance(tmp_path: Path) -> None:
+    app = KernelApplication(
+        RuntimePaths(tmp_path / "codex-home", tmp_path / "cache"),
+        worker_launcher=lambda _paths, _preset: None,
+    )
+
+    with pytest.raises(ValueError, match="query request or guidance"):
+        app.query({"requests": []})
+
+
+def test_named_top_threads_template_matches_the_explicit_fast_path(
+    tmp_path: Path,
+) -> None:
+    app = KernelApplication(
+        active_runtime(tmp_path),
+        worker_launcher=lambda _paths, _preset: None,
+        source_provider=lambda _home: synthetic_sources(),
+    )
+
+    named = app.query({"requests": [{"template": "top_threads"}]})
+    explicit = app.query(
+        {
+            "requests": [
+                {
+                    "dataset": "calls",
+                    "operation": "share",
+                    "dimensions": ["thread"],
+                    "measures": [
+                        "calls",
+                        "uncached_input_tokens",
+                        "cached_input_tokens",
+                        "reasoning_tokens",
+                        "output_tokens",
+                        "total_tokens",
+                    ],
+                    "order_by": "total_tokens",
+                    "descending": True,
+                    "limit": 5,
+                }
+            ]
+        }
+    )
+    repeated = app.query({"requests": [{"template": "top_threads"}]})
+
+    named_exact = dict(named["results"][0])
+    explicit_exact = dict(explicit["results"][0])
+    named_exact.pop("elapsed_ms")
+    explicit_exact.pop("elapsed_ms")
+    assert named_exact == explicit_exact
+    assert named["results"][0]["grade"] == "exact"
+    assert named["results"][1]["grade"] == "estimated"
+    assert repeated["results"] == named["results"]
+    assert repeated["cache"]["key"] == named["cache"]["key"]
+    assert named["cache"]["hit"] is False
+    assert repeated["cache"]["hit"] is True
+    assert all(row["thread_label"] for row in named["results"][0]["rows"])
+    assert named["results"][0]["evidence_selectors"]
+
+
+def test_named_top_threads_keeps_logical_token_and_cost_results_coherent(
+    tmp_path: Path,
+) -> None:
+    app = KernelApplication(
+        logical_split_runtime(tmp_path),
+        worker_launcher=lambda _paths, _preset: None,
+    )
+
+    first = app.query({"requests": [{"template": "top_threads"}]})
+    repeated = app.query({"requests": [{"template": "top_threads"}]})
+    token_result, cost_result = first["results"]
+    token_threads = [str(row["thread"]) for row in token_result["rows"]]
+    cost_threads = [str(row["thread"]) for row in cost_result["rows"]]
+
+    assert token_threads == cost_threads
+    assert len(token_threads) == len(set(token_threads)) == 2
+    assert [row["thread_label"] for row in token_result["rows"]] == [
+        row["thread_label"] for row in cost_result["rows"]
+    ]
+    assert token_result["rows"][0]["thread_label"] == "Current logical thread"
+    assert token_result["rows"][0]["calls"] == 2
+    assert token_result["rows"][0]["uncached_input_tokens"] == 298
+    assert token_result["rows"][0]["cached_input_tokens"] == 2
+    assert token_result["rows"][0]["reasoning_tokens"] == 2
+    assert token_result["rows"][0]["output_tokens"] == 4
+    assert token_result["rows"][0]["total_tokens"] == 304
+    assert all(
+        "configured_cost_usd" in row and "estimated_credits" in row
+        for row in cost_result["rows"]
+    )
+    assert first["cache"]["hit"] is False
+    assert repeated["cache"]["hit"] is True
+    assert repeated["cache"]["key"] == first["cache"]["key"]
+    assert repeated["results"] == first["results"]
+
+
+def test_curated_period_and_latest_change_templates_use_one_snapshot(
+    tmp_path: Path,
+) -> None:
+    app = KernelApplication(
+        active_runtime(tmp_path),
+        worker_launcher=lambda _paths, _preset: None,
+        source_provider=lambda _home: synthetic_sources(),
+    )
+
+    weekly = app.query({"requests": [{"template": "weekly_drivers"}]})
+    comparison = app.query({"requests": [{"template": "week_over_week"}]})
+    latest = app.query(
+        {"requests": [{"template": "latest_incremental_change"}]}
+    )
+
+    assert len(weekly["results"]) == 1
+    assert weekly["results"][0]["rows"]
+    assert weekly["results"][0]["generation"] == 1
+    assert weekly["results"][0]["normalized_scope"]["filters"] == [
+        {
+            "field": "event_at",
+            "operator": "gte",
+            "value": "2025-12-26T00:00:04.500Z",
+        },
+        {
+            "field": "event_at",
+            "operator": "lte",
+            "value": "2026-01-02T00:00:04.500Z",
+        },
+    ]
+    assert comparison["results"][0]["rows"] == [
+        {
+            "change_percent_total_tokens": None,
+            "change_total_tokens": 515,
+            "current_total_tokens": 515,
+            "previous_total_tokens": 0,
+        }
+    ]
+    assert comparison["results"][0]["generation"] == 1
+    assert [result["rows"] for result in latest["results"]] == [
+        [
+            {
+                "calls": 4,
+                "generation": 1,
+                "total_tokens": 515,
+            }
+        ],
+        [
+                {
+                    "calls": 3,
+                    "thread": "thr_110d88d20a0cf11ee23996ca93651d87",
+                    "thread_label": "Thread 93651d87",
+                    "total_tokens": 420,
+                }
+        ],
+    ]
+    assert {result["generation"] for result in latest["results"]} == {1}
+    assert all(result["grade"] == "exact" for result in latest["results"])
+
+
+def test_latest_incremental_template_supports_an_empty_active_generation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "sessions" / "empty.jsonl"
+    source.parent.mkdir()
+    source.write_text(
+        '{"payload":{"id":"00000000-0000-4000-8000-000000000001"},'
+        '"timestamp":"2026-07-28T00:00:00.000Z","type":"session_meta"}\n',
+        encoding="utf-8",
+    )
+    runtime = RuntimePaths(tmp_path / "codex-home", tmp_path / "cache")
+    refresh = KernelIngestor(
+        runtime.kernel.analytical,
+        runtime.kernel.operational,
+    ).refresh(
+        [source],
+        trigger=RefreshTrigger.CLI_REFRESH,
+        owner_id="empty-active-generation",
+        hydration_preset=HydrationPreset.COMPLETE,
+    )
+    app = KernelApplication(
+        runtime,
+        worker_launcher=lambda _paths, _preset: None,
+        source_provider=lambda _home: (source,),
+    )
+
+    response = app.query(
+        {"requests": [{"template": "latest_incremental_change"}]}
+    )
+
+    assert refresh.generation == 1
+    assert len(response["results"]) == 2
+    assert {result["generation"] for result in response["results"]} == {1}
+    assert all(result["matched_count"] == 0 for result in response["results"])
+    assert all(result["rows"] == [] for result in response["results"])
+
+
+@pytest.mark.parametrize(
+    ("query_payload", "message"),
+    [
+        ({"template": "missing"}, "query template is not allowlisted"),
+        (
+            {"template": "top_threads", "parameters": {"unexpected": "value"}},
+            "query template parameters are invalid",
+        ),
+        (
+            {
+                "template": "top_threads",
+                "dataset": "calls",
+            },
+            "query template request has unexpected fields",
+        ),
+        (
+            {"template": "period_comparison"},
+            "query template parameters are invalid",
+        ),
+    ],
+)
+def test_named_query_templates_fail_closed(
+    tmp_path: Path,
+    query_payload: dict[str, object],
+    message: str,
+) -> None:
+    app = KernelApplication(
+        active_runtime(tmp_path),
+        worker_launcher=lambda _paths, _preset: None,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        app.query({"requests": [query_payload]})
+
+
+def test_query_response_budget_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(application_service, "MAX_QUERY_RESPONSE_BYTES", 1)
+    app = KernelApplication(
+        RuntimePaths(tmp_path / "codex-home", tmp_path / "cache"),
+        worker_launcher=lambda _paths, _preset: None,
+    )
+
+    with pytest.raises(ValueError, match="response exceeds byte budget"):
+        app.query({"requests": [], "include_guidance": True})
+
+
+def test_repeated_guided_batch_is_deterministic_except_for_elapsed_time(
+    tmp_path: Path,
+) -> None:
+    app = KernelApplication(
+        active_runtime(tmp_path),
+        worker_launcher=lambda _paths, _preset: None,
+        source_provider=lambda _home: synthetic_sources(),
+    )
+    payload = {
+        "include_guidance": True,
+        "requests": [
+            {
+                "dataset": "calls",
+                "operation": "share",
+                "dimensions": ["thread"],
+                "measures": ["calls", "total_tokens"],
+                "limit": 10,
+            },
+            {
+                "dataset": "calls",
+                "operation": "aggregate",
+                "dimensions": ["model", "effort"],
+                "measures": ["calls", "total_tokens"],
+                "limit": 10,
+            },
+        ],
+    }
+
+    first = app.query(payload)
+    second = app.query(payload)
+    for response in (first, second):
+        for result in response["results"]:
+            result.pop("elapsed_ms")
+        response.pop("cache")
+
+    assert first == second
+
+
+def test_refresh_joins_compatible_live_job_without_launching_worker(
+    tmp_path: Path,
+) -> None:
+    runtime = RuntimePaths(tmp_path / "codex-home", tmp_path / "cache")
+    runtime.codex_home.mkdir(parents=True)
+    initialize_operational_database(runtime.kernel.operational)
+    sources = synthetic_sources()
+    repository = RefreshLeaseRepository(runtime.kernel.operational)
+    lease = repository.acquire(
+        refresh_request_hash(
+            list(sources),
+            hydration_preset=HydrationPreset.RECENT_30D,
+        ),
+        "existing-owner",
+    )
+    launches: list[RuntimePaths] = []
+    app = KernelApplication(
+        runtime,
+        worker_launcher=lambda paths, _preset: launches.append(paths),
+        source_provider=lambda _home: sources,
+    )
+
+    result = app.refresh()
+
+    assert result["disposition"] == "joined"
+    assert result["job"]["job_id"] == lease.refresh_run_id
+    assert launches == []
+
+
+def test_concurrent_refresh_callers_launch_one_worker(tmp_path: Path) -> None:
+    runtime = RuntimePaths(tmp_path / "codex-home", tmp_path / "cache")
+    runtime.codex_home.mkdir(parents=True)
+    sources = synthetic_sources()
+    repository = RefreshLeaseRepository(runtime.kernel.operational)
+    launches = 0
+    launch_lock = threading.Lock()
+
+    def launch(_paths: RuntimePaths, _preset: object) -> None:
+        nonlocal launches
+        with launch_lock:
+            launches += 1
+        repository.acquire(
+            refresh_request_hash(
+                list(sources),
+                hydration_preset=HydrationPreset.RECENT_30D,
+            ),
+            "concurrent-owner",
+        )
+
+    app = KernelApplication(
+        runtime,
+        worker_launcher=launch,
+        source_provider=lambda _home: sources,
+    )
+    results: list[dict[str, object]] = []
+    callers = [
+        threading.Thread(target=lambda: results.append(app.refresh()))
+        for _index in range(2)
+    ]
+
+    for caller in callers:
+        caller.start()
+    for caller in callers:
+        caller.join(timeout=5)
+
+    assert launches == 1
+    assert sorted(result["disposition"] for result in results) == [
+        "joined",
+        "started",
+    ]
+
+
+def test_expired_refresh_is_recovered_and_replaced_once(tmp_path: Path) -> None:
+    runtime = RuntimePaths(tmp_path / "codex-home", tmp_path / "cache")
+    runtime.codex_home.mkdir(parents=True)
+    initialize_operational_database(runtime.kernel.operational)
+    sources = synthetic_sources()
+    repository = RefreshLeaseRepository(runtime.kernel.operational)
+    expired = repository.acquire(
+        refresh_request_hash(
+            list(sources),
+            hydration_preset=HydrationPreset.RECENT_30D,
+        ),
+        "dead-owner",
+        now=1,
+    )
+    launches = 0
+
+    def launch(_paths: RuntimePaths, _preset: object) -> None:
+        nonlocal launches
+        launches += 1
+        repository.acquire(
+            refresh_request_hash(
+                list(sources),
+                hydration_preset=HydrationPreset.RECENT_30D,
+            ),
+            "replacement-owner",
+        )
+
+    app = KernelApplication(
+        runtime,
+        worker_launcher=launch,
+        source_provider=lambda _home: sources,
+    )
+
+    result = app.refresh()
+
+    assert launches == 1
+    assert result["disposition"] == "started"
+    assert result["job"]["job_id"] != expired.refresh_run_id
+    assert JobReader(runtime.kernel.operational).get(
+        expired.refresh_run_id
+    ).state == "interrupted"
+
+
+def test_job_status_waits_on_host_and_returns_one_terminal_snapshot(
+    tmp_path: Path,
+) -> None:
+    runtime = RuntimePaths(tmp_path / "codex-home", tmp_path / "cache")
+    initialize_operational_database(runtime.kernel.operational)
+    repository = RefreshLeaseRepository(runtime.kernel.operational)
+    lease = repository.acquire("sha256:synthetic", "owner")
+    app = KernelApplication(runtime, worker_launcher=lambda _paths, _preset: None)
+
+    def complete() -> None:
+        threading.Event().wait(0.05)
+        repository.complete(
+            lease.refresh_run_id,
+            generation=2,
+            result={
+                "changed_sources": 1,
+                "inserted_calls": 2,
+                "inserted_tools": 3,
+                "deleted_rows": 0,
+            },
+        )
+
+    worker = threading.Thread(target=complete)
+    worker.start()
+    result = app.job_status(
+        lease.refresh_run_id,
+        wait_seconds=1,
+        include_result=True,
+    )
+    worker.join(timeout=1)
+
+    assert result["state"] == "completed"
+    assert result["stage"] == "complete"
+    assert result["progress_percent"] == 100
+    assert result["terminal"] is True
+    assert result["result"]["inserted_tools"] == 3
+    assert JobReader(runtime.kernel.operational).active() is None
+
+
+def test_refresh_waits_for_a_new_job_after_a_previous_terminal_run(
+    tmp_path: Path,
+) -> None:
+    runtime = RuntimePaths(tmp_path / "codex-home", tmp_path / "cache")
+    initialize_operational_database(runtime.kernel.operational)
+    repository = RefreshLeaseRepository(runtime.kernel.operational)
+    previous = repository.acquire("sha256:previous", "previous-owner")
+    repository.complete(previous.refresh_run_id, generation=1, result={})
+    sources = synthetic_sources()
+
+    def launch(_paths: RuntimePaths, _preset: object) -> None:
+        repository.acquire(
+            refresh_request_hash(
+                list(sources),
+                hydration_preset=HydrationPreset.RECENT_30D,
+            ),
+            "new-owner",
+        )
+
+    app = KernelApplication(
+        runtime,
+        worker_launcher=launch,
+        source_provider=lambda _home: sources,
+    )
+
+    result = app.refresh()
+
+    assert result["job"]["job_id"] != previous.refresh_run_id
+    assert result["job"]["state"] == "running"
+
+
+def test_real_background_worker_reaches_terminal_on_synthetic_input(
+    tmp_path: Path,
+) -> None:
+    runtime = RuntimePaths(tmp_path / "codex-home", tmp_path / "cache")
+    shutil.copytree(ORACLE_ROOT / "logs", runtime.codex_home / "sessions")
+    app = build_application(runtime)
+
+    result = app.refresh(
+        wait_seconds=30,
+        hydration_preset=HydrationPreset.COMPLETE,
+    )
+
+    assert result["disposition"] == "started"
+    assert result["job"]["state"] == "completed"
+    assert result["job"]["terminal"] is True
+    assert result["job"]["output_generation"] == 1
+    assert result["job"]["inserted_rows"] > 0
+    assert app.status()["generation"] == 1

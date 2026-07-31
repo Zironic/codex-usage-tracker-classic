@@ -8,26 +8,14 @@ exclude = [
   "**/venv",
 ]
 source_roots = ["src"]
-root_module = "ignore"
-forbid_circular_dependencies = false
+root_module = "forbid"
+forbid_circular_dependencies = true
 layers_explicit_depends_on = true
 
 [[modules]]
-path = "codex_usage_tracker.__main__"
-depends_on = ["codex_usage_tracker.cli"]
-
-[[modules]]
-path = "codex_usage_tracker.allowance"
+path = "codex_usage_tracker.kernel"
 depends_on = []
 
 [[modules]]
-path = "codex_usage_tracker.mcp_server"
-depends_on = []
-
-[[modules]]
-path = "codex_usage_tracker.plugin_installer"
-depends_on = []
-
-[[modules]]
-path = "codex_usage_tracker.support"
+path = "codex_usage_tracker.release"
 depends_on = []

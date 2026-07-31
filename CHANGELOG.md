@@ -2,6 +2,117 @@
 
 ## Unreleased
 
+## 0.28.0 - 2026-07-27
+
+- Freeze the six-tool MCP, versioned HTTP/SSE, primary CLI, logical evidence,
+  cache lifecycle, calculation-grade, four-token-class, JSON export, privacy,
+  installation, and upgrade contracts.
+- Qualify abrupt writer and content-worker death, storage failures, stale
+  leases, promotion recovery, malformed requests, slow SSE clients, concurrent
+  reads, large histories, public-version upgrades, and rollback with synthetic
+  fixtures.
+- Keep `exact`, `deterministic`, and `estimated` as the only calculation grades;
+  report incomplete observations through explicit coverage rather than a
+  fourth `partial` grade.
+- Defer 1.0 until post-freeze dogfood while keeping optional context composition
+  and the read-only overlay adapter outside the stable surface.
+
+## 0.27.0 - 2026-07-27
+
+- Add compact guided-exploration templates and filter grammar so models can
+  compose bounded exact queries without a server-authored narrative layer.
+- Add disabled-by-default, owner-only context-composition evidence with
+  explicit privacy confirmation, bounded incremental reads, exact observed
+  bytes, optional estimator coverage, and deletion that leaves accounting
+  untouched.
+- Freeze a read-only future-overlay adapter boundary over existing status,
+  evidence, and generation-event routes without adding an overlay bundle,
+  capture, write, refresh, credential, raw-content, or external-transmission
+  authority.
+- Harden Evidence Console stream-gap recovery by closing the stale EventSource,
+  resnapshotting, and reopening without its retained event cursor.
+
+## 0.26.0 - 2026-07-27
+
+- Replace the beta analysis and compatibility product with a lean local data
+  kernel for exact incremental facts, bounded model-driven queries, evidence
+  timelines, live reconnect, and allowance efficiency.
+- Ship exactly six MCP tools, ten operational CLI commands, seven kernel API
+  routes, and a focused Evidence Console with no implicit refresh or narrative
+  analysis job.
+- Preserve the 0.25 cache beside the new kernel, build only on explicit
+  refresh, promote atomically, and retain rollback metadata without reading or
+  rewriting the legacy database.
+- Remove retired telemetry, OTel, compression, diagnostics, recommendations,
+  content indexing, compatibility profiles, and legacy dashboard assets from
+  the installed package.
+
+- Archive the completed MCP-first roadmap and establish the Product Kernel
+  Reset program around exact incremental facts, model-owned inference, live
+  evidence, a six-tool MCP surface, side-by-side cache cutover, and removal of
+  the beta analysis and compatibility shell.
+- Add an early K1A code-quarantine gate, four-way per-path disposition, and a
+  non-publishable integration branch so retired beta code leaves the active
+  agent worktree before kernel implementation.
+
+## 0.25.1 - 2026-07-25
+
+- Remove the experimental local telemetry parser, cursor, staging,
+  reconciliation, refresh phase, diagnostics, and support-bundle surface;
+  schema 38 drops the retired tables without rebuilding canonical usage rows.
+- Reuse the active compatible refresh when stale analysis needs current data,
+  including across moving-tail source revisions, instead of spawning
+  conflicting refresh jobs.
+- Build job status and detailed progress from one durable row snapshot so a
+  poll cannot report an outer running state with nested failed progress.
+- Route large-history `execution="auto"` analysis through a durable async job,
+  and preserve completed refresh and analysis results across MCP restarts.
+- Keep no-change and append-safe refresh work proportional to the moving tail:
+  allowance observations, reset-aware materialization, thread links, and
+  interval revisions no longer rebuild total-history derived state. Schema 38
+  replaces low-selectivity interval revision indexes.
+
+## 0.25.0 - 2026-07-25
+
+- Prioritize central-product reliability before compatibility removal, moving
+  the existing removal and stabilization roadmap stages to 0.26 and 0.27.
+- Give generated plugin bundles a deterministic skills/assets digest and
+  invalidate only a stale same-version Codex cache owned by this plugin.
+- Keep MCP and Evidence Console startup read-only while equivalent refreshes
+  join one durable cross-process job in an operational sidecar database.
+- Parse append-active JSONL only through fixed complete-line byte boundaries,
+  expose progress/generations/tails/timing, and resume stale analysis after its
+  durable refresh dependency.
+- Remove the legacy static dashboard generator, assets, screenshots, CLI
+  aliases, MCP tool, and configured static serving. The live Evidence Console,
+  CSV/JSON exports, exact deep links, and focused query plans remain.
+- Keep Home call, token, and cache totals current when recommendation analysis
+  lags the incremental index, and remove persisted findings/evidence from the
+  Home load path.
+
+## 0.24.0 - 2026-07-24
+
+- Introduce an explicit application composition root and dependency protocols,
+  remove Python dependency cycles, and enforce the architecture with Tach.
+- Enable SQLite foreign-key enforcement, make schema migrations fail
+  atomically, harden rebuild recovery, and advance the additive schema to
+  version 37.
+- Seek directly to indexed context byte offsets while preserving a bounded
+  sequential fallback for older rows and unusually large selected turns.
+- Persist reusable analysis jobs, results, progress, errors, and lease recovery
+  so interrupted work no longer depends on process-local memory.
+- Preserve focused Home, Limits, Calls, Threads, and thread-call endpoint
+  performance instead of replacing them with slower generic queries.
+- Make release quality, changed-line coverage, architecture, workflow pinning,
+  product complexity, package size, and build-once artifact promotion directly
+  blocking.
+- Convert five legacy dashboard workbenches to localized, notice-only routes
+  that start no historical queries or jobs. CLI, HTTP, CSV export, and
+  full-profile MCP compatibility remain available through 0.24.x and are due
+  for removal in 0.25.0.
+- Preserve the refresh deduplication index and make compression-status polling
+  query-only to avoid avoidable SQLite write contention.
+
 ## 0.23.0 - 2026-07-23
 
 - Focus the Evidence Console on Home, unified Calls/Threads Explore, Limits,

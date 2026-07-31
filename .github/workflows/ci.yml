@@ -1,295 +1,114 @@
-name: CI
+name: Kernel CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - kernel/0.26-integration
+      - main
   pull_request:
+    branches:
+      - kernel/0.26-integration
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: kernel-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  hardening_dashboard:
-    name: Hardening / Dashboard quality
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Install dashboard tooling
-        run: npm ci
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Dashboard lint
-        run: npm run dashboard:lint
-      - name: Dashboard type check
-        run: npm run dashboard:typecheck
-      - name: Dashboard tests
-        run: npm run dashboard:test
-      - name: Dashboard build
-        run: npm run dashboard:build
-      - name: Dashboard governance
-        run: npm run dashboard:governance
-      - name: Dashboard bundle budget
-        run: node scripts/check-dashboard-bundles.mjs
-      - name: Dashboard release candidate
-        run: npm run dashboard:release-candidate
-
-  hardening_routes:
-    name: Hardening / Dashboard route budget
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6.3.0
-        with:
-          python-version: "3.14"
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - name: Install runtime dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install .
-      - name: Dashboard route performance budget
-        run: |
-          python scripts/benchmark_dashboard_routes.py \
-            --sizes 100000 \
-            --iterations 3 \
-            --skip-compression \
-            --enforce-thresholds \
-            --output-dir /tmp/dashboard-route-budget
-
-  hardening_python:
-    name: Hardening / Python quality and security
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6.3.0
-        with:
-          python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            pyproject.toml
-            requirements/audit.txt
-      - name: Install Python tooling
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install ".[dev]"
-          python -m pip install --force-reinstall --no-deps \
-            "agent-maintainer @ git+https://github.com/douglasmonsky/agent-maintainer.git@1129570a725256dcc5f04bee33cdc32c35af911d"
-      - name: Agent Maintainer guidance drift
-        run: python -m agent_maintainer guidance --check
-      - name: Whole-source Pyright
-        run: python -m pyright --pythonpath "$(command -v python)" src
-      - name: Dependency hygiene
-        run: deptry .
-      - name: Dead code
-        run: vulture src tests config/vulture-whitelist.py
-      - name: Python security
-        run: python -m agent_maintainer.runners.bandit
-
-  hardening_policy:
-    name: Hardening / Repository policy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6.3.0
-        with:
-          python-version: "3.14"
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - uses: actions/setup-go@v6.5.0
-        with:
-          go-version: "1.25"
-      - name: Restore pinned policy tools
-        id: policy-tools-cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/go/bin/actionlint
-            ~/go/bin/gitleaks
-            ~/.cargo/bin/taplo
-          key: ${{ runner.os }}-hardening-tools-actionlint-1.7.12-gitleaks-8.30.1-taplo-0.9.0-v1
-      - name: Install repository policy dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install \
-            "check-jsonschema>=0.37.4" \
-            "yamllint>=1.38.0" \
-            "zizmor>=1.26.1"
-          npm ci
-      - name: Install pinned policy tools
-        if: steps.policy-tools-cache.outputs.cache-hit != 'true'
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          go install github.com/zricethezav/gitleaks/v8@v8.30.1
-          cargo install taplo-cli --version 0.9.0 --locked
-      - name: Workflow security
-        run: zizmor --offline --no-progress .github/workflows
-      - name: GitHub Actions lint
-        run: actionlint .github/workflows/*.yml
-      - name: Secret scan
-        run: gitleaks dir --no-banner --redact=100 --report-format json --report-path /tmp/gitleaks.json .
-      - name: Markdown lint
-        run: npx markdownlint-cli2
-      - name: YAML lint
-        run: yamllint .github .yamllint
-      - name: TOML format
-        run: taplo fmt --check pyproject.toml tach.toml
-      - name: Workflow schema validation
-        run: |
-          check-jsonschema \
-            --builtin-schema vendor.github-workflows \
-            .github/workflows/allowance-statistical-calibration.yml \
-            .github/workflows/ci.yml \
-            .github/workflows/pricing-compat.yml \
-            .github/workflows/publish.yml
-          check-jsonschema \
-            --builtin-schema vendor.dependabot \
-            .github/dependabot.yml
-
-  hardening:
-    name: Hardening gates
-    if: ${{ always() }}
-    needs:
-      - hardening_dashboard
-      - hardening_routes
-      - hardening_python
-      - hardening_policy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify hardening workers
-        env:
-          DASHBOARD_RESULT: ${{ needs.hardening_dashboard.result }}
-          ROUTES_RESULT: ${{ needs.hardening_routes.result }}
-          PYTHON_RESULT: ${{ needs.hardening_python.result }}
-          POLICY_RESULT: ${{ needs.hardening_policy.result }}
-        run: |
-          test "$DASHBOARD_RESULT" = success
-          test "$ROUTES_RESULT" = success
-          test "$PYTHON_RESULT" = success
-          test "$POLICY_RESULT" = success
-
-  dashboard-visualization:
-    name: Dashboard visualization contracts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: "22"
-      - name: Install dashboard tooling
-        run: npm ci
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Visualization renderer budget
-        run: npm run dashboard:visualization-bundle
-      - name: Visualization browser contracts
-        run: npm run dashboard:visualization-smoke
-      - name: Upload visualization evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: dashboard-visualization-evidence
-          path: test-results/**/*.png
-          if-no-files-found: warn
-          retention-days: 14
-
-  test:
-    name: Test Python ${{ matrix.python-version }}
+  kernel:
+    name: Kernel phase and package isolation
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.14"]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v6.3.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Verify audited main base
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'release/0.28.0'
+        env:
+          ACTUAL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          expected="$(python -c \
+            'import json; print(json.load(open("config/kernel-release-qualification-v1.json"))["audited_main_sha"])')"
+          test "$ACTUAL_BASE_SHA" = "$expected"
+      - name: Install kernel tooling
         run: |
           python -m pip install --upgrade pip
           python -m pip install ".[dev]"
-      - uses: actions/setup-node@v7.0.0
+      - name: Verify kernel phase
+        env:
+          MATRIX_PYTHON: ${{ matrix.python-version }}
+        run: |
+          python scripts/check_kernel_scope.py
+          python scripts/generate_kernel_manifests.py --check
+          PYTHONPATH=src python scripts/generate_kernel_interfaces.py --check
+          python -m ruff check .
+          python -m mypy
+          python scripts/check_kernel_maintainability.py
+          python -m pytest -p no:tach \
+            --ignore=tests/kernel/test_ingest_performance.py \
+            --ignore=tests/kernel/allowance/test_performance.py \
+            --ignore=tests/kernel/evidence/test_performance.py \
+            --ignore=tests/kernel/interfaces/test_performance.py \
+            --ignore=tests/kernel/query/test_performance.py
+          python -m pyright --pythonpath "$(command -v python)"
+          python scripts/check_release.py
+      - name: Run synthetic scale invariants
         if: matrix.python-version == '3.14'
-        with:
-          node-version: "22"
-      - name: Ruff
-        if: matrix.python-version == '3.14'
-        run: python -m ruff check .
-      - name: Type check
-        if: matrix.python-version == '3.14'
-        run: python -m mypy
-      - name: Test
-        run: python -m pytest
-      - name: Coverage
-        if: matrix.python-version == '3.14'
-        run: python -m pytest --cov=codex_usage_tracker --cov-report=term-missing
-      - name: Compile
-        run: python -m compileall src
-      - name: Dashboard JavaScript syntax
+        run: python scripts/run_performance_suite.py --lane invariants
+      - name: Build isolated development package
         if: matrix.python-version == '3.14'
         run: |
-          for file in src/codex_usage_tracker/plugin_data/dashboard/dashboard*.js; do
-            node --check "$file"
-          done
-      - name: Release readiness
-        run: python scripts/check_release.py
+          python -m build
+          python scripts/check_release.py --dist
+          python scripts/smoke_installed_package.py \
+            --artifact-dir dist \
+            --version 0.28.0 \
+            --upgrade-from 0.26.0
+          python scripts/smoke_installed_package.py \
+            --artifact-dir dist \
+            --version 0.28.0 \
+            --upgrade-from 0.27.0
       - name: Whitespace
         run: git diff --check
 
-  package:
-    name: Build package
+  console:
+    name: Focused Evidence Console
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v6.3.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Install dashboard tooling
-        run: npm ci
-      - name: Verify packaged dashboard assets
-        run: npm run dashboard:assets:check
-      - name: Install build tooling
+      - name: Install Console tooling
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install ".[dev]" twine
-      - name: Build wheel and sdist
-        run: python -m build
-      - name: Check distributions
-        run: python -m twine check dist/*
-      - name: Verify built wheel
-        run: python scripts/check_release.py --dist
-      - name: Smoke installed wheel
-        run: python scripts/smoke_installed_package.py
+          python -m pip install ".[dev]"
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Verify deterministic Console
+        run: |
+          npm run console:verify
+          npm run console:e2e
+          python -m build
+          python scripts/check_release.py --dist
+          python scripts/smoke_installed_console.py --wheel dist/*.whl
+          python scripts/smoke_installed_console.py --reference-0251

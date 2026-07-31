@@ -1,294 +1,310 @@
 # Codex Usage Tracker Instructions
 
-## Project Purpose
+## Product and authority
 
-This repo builds a local Codex plugin and dashboard that track aggregate token usage from Codex session logs.
+This repository is replacing the released 0.28 spike with a clean, local,
+Codex-first workflow-observability kernel. The kernel owns exact facts,
+identity, ordering, deduplication, calculations, freshness, coverage,
+allowance, valuation, bounded queries, and stable evidence. The consuming
+model owns interpretation, hypotheses, prioritization, caveats, and
+recommendations.
 
-## Tech Stack
+Start at `docs/INDEX.md`. The only implementation roadmap is
+`docs/roadmap/AGENT_FIRST_CLEAN_CUTOVER.md`; its checkbox ledger is
+`docs/roadmap/TASK_PACKETS.md`, and each complete contract is one file under
+`docs/roadmap/tasks/`. Archived documents and historical release notes are
+evidence, not authority.
 
-- Python 3.10+
-- SQLite via the Python standard library
-- MCP Python SDK for Codex tool exposure
-- Pytest for tests
+CK-07C additionally owns
+`docs/architecture/PLAN_OPERAND_AND_FACT_CONTRACT.md` and the versioned
+`config/agent-kernel/plan-operand-contract-v1.json`. CK-07D merged the
+effective-dated rate-card valuation correction at `e49531b`. CK-07E is the
+admitted test-only prerequisite for independent structural and query-only
+database-v1 fact adapters. CK-07A remains blocked and 0 / 80 requalified until
+CK-07E is merged and exact-main verified; neither prerequisite packet
+qualifies CK-07A's 80 structural-v2 variants.
 
-## Repo Layout
+Advance CK packets in dependency order. Do not begin a dependent packet before
+its prerequisites are checked complete. Update the packet status, master
+checkbox ledger, measurements, deviations, and residual risks in the same
+change that completes a packet.
 
-- `src/codex_usage_tracker/` - parser, SQLite store, reports, dashboard, CLI, and MCP server.
-- `src/codex_usage_tracker/context.py` - on-demand raw-context reader for one selected usage record.
-- `src/codex_usage_tracker/reports.py` - shared application/report services used by CLI and MCP wrappers.
-- `src/codex_usage_tracker/api_payloads.py` - shared stable JSON payload builders for CLI and MCP surfaces.
-- `src/codex_usage_tracker/schema.py` - single source of truth for persisted usage-event columns.
-- `src/codex_usage_tracker/threads.py` - thread attachment inference used by dashboard payload generation.
-- `src/codex_usage_tracker/pricing_config.py`, `pricing_openai.py`, `pricing_estimates.py`, and `costing.py` - pricing config, source parsing, estimate policy, and cost calculations behind the `pricing.py` facade.
-- `src/codex_usage_tracker/allowance.py` - Codex credit-rate and optional local allowance-window helpers.
-- `src/codex_usage_tracker/plugin_installer.py` - package-owned local Codex plugin installer.
-- `src/codex_usage_tracker/plugin_data/` - plugin assets, dashboard template/assets, local dashboard guide, screenshots, and skill files bundled into wheels.
-- `skills/codex-usage-tracker/` and `src/codex_usage_tracker/plugin_data/skills/codex-usage-tracker/` - operational Codex skill for tracker setup, summaries, dashboard generation, and MCP tools.
-- `skills/codex-usage-api/` and `src/codex_usage_tracker/plugin_data/skills/codex-usage-api/` - companion Codex skill for conversational analysis using the stable JSON API/MCP tools.
-- `src/codex_usage_tracker/server.py` - localhost dashboard server with live aggregate refresh and lazy context endpoints.
-- `~/.codex-usage-tracker/pricing.json` - optional local-only pricing config, never committed.
-- `~/.codex-usage-tracker/allowance.json` - optional local-only copied allowance state, never committed.
-- `.codex-plugin/plugin.json` - Codex plugin manifest.
-- `.mcp.json` - MCP server configuration for Codex.
-- `scripts/install_local_plugin.py` - compatibility wrapper around `codex-usage-tracker install-plugin`.
-- `scripts/check_release.py` - release-readiness checks for docs, versions, packaging, wheel contents, and tracked secret patterns.
-- `.github/workflows/ci.yml` - GitHub Actions test and package build workflow.
-- `.github/workflows/pricing-compat.yml` - scheduled/manual non-blocking live pricing parser compatibility check.
-- `docs/` - install, dashboard, CLI, pricing/credits, MCP, privacy, architecture, development, JSON-schema docs, and screenshots built from synthetic aggregate fixture data.
-- `tests/` - synthetic fixtures and unit tests.
+## Cross-packet semantic continuity
 
-## Setup
+A packet is connected to its prerequisites by executable semantics, not only
+by document links, identifiers, hashes, counts, or a prior `Completed` status.
+Before a packet may consume an upstream artifact as truth, its contract must
+name:
 
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install ".[dev]" twine
-codex-usage-tracker install-plugin --python .venv/bin/python
-```
+- the producer artifact and exact identity;
+- the consumer path that uses it;
+- an independent truth source or reference evaluator;
+- the executable seam check that compares producer meaning with consumer
+  behavior;
+- the downstream packets and evidence that require requalification if the seam
+  changes.
 
-## Branch And PR Workflow
+For fact-backed behavior, preserve a three-way proof: one scenario declaration
+emits canonical typed facts, an independent reference evaluator calculates the
+expected result for the exact typed request, and the production consumer
+calculates the same result from its permitted facts. A database table
+containing expected answers, a copied oracle row, internal formula
+consistency, or a matching digest does not prove fact lineage.
 
-This project is now a published PyPI package with user-facing docs, JSON/MCP contracts, a release workflow, and privacy guarantees. Treat `main` as always releasable.
+When a downstream packet exposes an upstream semantic mismatch, stop the
+affected packet, record exact reproduction evidence, and add a corrective
+packet to the dependency graph. Preserve historical packet evidence; amend it
+through a linked requalification record rather than silently changing its
+meaning. Do not resume dependents until the corrective packet replays every
+affected seam against the actual downstream implementation.
 
-### MCP-First Pivot Execution
+## Packet task handoff
 
-Work in the MCP-first pivot must follow
-`docs/roadmap/mcp-first-pivot.md` and its approved detailed implementation
-roadmap. Use one focused `pivot/<task-number>-<slug>` branch per task, implement
-only the task's declared interfaces, and update
-`docs/roadmap/mcp-first-pivot-execution.md` in the same commit with branch,
-commits, focused and full verification, deviations, and follow-up risks.
+Keep each CK packet in its own Codex task. After a packet is fully accepted,
+merged, and verified on `main`, the completing task must create a new Codex
+task in the same project folder for the next admitted packet. Give the new task
+a clean, decision-complete handoff that names the canonical repository and
+`main` commit, packet authority and acceptance criteria, completed evidence,
+remaining approval gates, relevant commands, and any known risks or
+pre-existing failures. Verify that the new task started in the intended project
+folder with the handoff before ending the completing task. The completing task
+must not begin implementation of the next packet; ownership transfers at the
+packet boundary. The handoff must also name the admitted producer artifacts,
+consumer seam checks, independent truth source, and requalification set.
 
-Do not add a dashboard workspace, top-level MCP concept, top-level CLI command,
-runtime dependency, or SQLite table unless the roadmap names it or an approved
-design amendment authorizes it. Compatibility removal must also be due in
-`docs/deprecations.md`.
+## Implementation boundary
+
+- Build the replacement under `src/codex_usage_tracker/agent_kernel/`.
+- The 0.28 spike under `src/codex_usage_tracker/kernel/` is a frozen executable
+  oracle until CK-14. Do not import it, open or migrate its database, or add new
+  MVP behavior to it.
+- The replacement database identity is
+  `codex-usage-tracker.agent-kernel.v1`; its canonical and operational files
+  are separate.
+- Do not add compatibility views, migration paths, server-authored narrative
+  findings, free-form SQL tools, or generic dashboard framework behavior.
+- The active frontend, Console routes, Node toolchain, and browser tests remain
+  only to keep 0.28 usable. Do not extend them. CK-14 removes them after CK-13
+  approves the qualified replacement.
+- Preserve exact-byte release primitives and useful synthetic oracles until
+  their owning packet ports or retires them.
+- CK-15 is optional and never blocks the MVP unless the maintainer explicitly
+  promotes it.
+
+## Domain rules
+
+- Store signed UTC microseconds as integers. Missing is `NULL`, never zero.
+- Keep uncached input, cached input, reasoning, and output tokens separate.
+- Separate transport tool name, semantic operation, target, invocation intent,
+  tool completion, and observed resource mutation.
+- Never attribute a state change solely to the immediately preceding call or
+  tool; cumulative preceding activity can contribute.
+- Preserve every exact allowance observation and its compatibility interval.
+- Keep facts canonical and projections current-only. Normal tails update dirty
+  keys; they do not copy a generation or rebuild the complete database.
+- Query never refreshes. Long work is host-waited; the model never polls.
+- Keep result envelopes compact, bounded, capability-aware, and suitable for a
+  less-capable model.
+- Do not encode qualitative conclusions such as waste, productivity, churn,
+  goodness, badness, or skill candidacy in schema fields.
+
+## Data handling
+
+- Use synthetic fixtures only in tests, benchmarks, screenshots, and committed
+  examples. Never inspect or commit a contributor's real Codex logs.
+- Do not commit prompts, responses, reasoning, command bodies, patches, tool
+  output bodies, credentials, secrets, private paths, or local databases.
+- The replacement does not promise sanitization, redaction, or secret
+  filtering. Local metadata returned by a query can still be sensitive; users
+  are responsible for reviewing anything they share.
+- Do not copy raw prompt, response, reasoning, command, patch, or tool-output
+  bodies into the replacement SQLite database. Extract only the structural
+  facts required by an accepted question contract.
+- Keep all services local-only. Do not add telemetry or transmit local usage
+  data.
+
+## Working method
+
+1. Read the current packet and only its controlling authority documents.
+2. Name the observable contract, upstream producer artifact, consumer path,
+   independent truth source, and executable seam check.
+3. Add or select the failing synthetic oracle.
+4. Implement the smallest complete change inside the packet's ownership.
+5. Run focused checks, then the smallest complete repository profile covering
+   every touched contract.
+6. Record correctness, latency, storage, response-byte, MCP-call, and model-token
+   measurements required by the packet.
+7. Stabilize the diff, then use at most one final read-only reviewer.
+
+Prefer direct functions, explicit data structures, cohesive modules, and clear
+dependency direction. Add abstraction only when it removes present
+duplication, isolates an external boundary, clarifies ownership, or creates a
+test seam required now. Keep mechanical moves separate from behavior changes.
+Fix the behavior a gate is meant to protect; if a gate proves no maintainability
+or correctness property, adjust the gate rather than churning unrelated code.
+
+Wemake is retired from repository governance. Do not install, run, or restore
+it locally or in CI without a new maintainer decision. Do not use
+`agent_maintainer verify` as an acceptance gate. Agent Maintainer remains
+available for doctor, context, change plans, guidance, and host-side waiting.
+
+## Execution delegation
+
+The maintainer authorizes execution subagents for this roadmap:
+
+- Before spawning a writing agent into a fresh or reused worktree, the root
+  integrator runs `python3 scripts/bootstrap_dev_environment.py` from that exact
+  root. The command repairs `.venv` from the repository `dev` extra, verifies
+  every active PEP 508 requirement, the exact editable worktree source, and the
+  declared Scalene pin. It installs integrity-locked GitNexus 1.6.9 under
+  `tools/gitnexus/node_modules/` and creates or refreshes that worktree's index.
+  It never installs a global or transient GitNexus CLI. It serializes GitNexus
+  analysis across worktrees; let the host wait for the command instead of
+  assigning model-driven polling.
+- On entry, the execution agent runs
+  `python3 scripts/bootstrap_dev_environment.py --check` once before tests,
+  profiling, or semantic work. The check verifies the GitNexus registry's
+  physical worktree, branch, commit, and bounded compare result against
+  `origin/main`; a merely "up-to-date" status is insufficient. If a later
+  branch transition makes GitNexus stale, rerun the bootstrap in that exact
+  worktree. Never install Scalene or another declared dev tool ad hoc with pip.
+  Generated `.venv/` and `.gitnexus/` state stays untracked.
+- Invoke Python profiling as
+  `PATH="$PWD/.venv/bin:$PATH" agent-perf run ...`; agent-perf resolves the
+  pinned `scalene` console entry point from `PATH`, not from the workload
+  interpreter argument. Keep Python 3.14 test qualification separate from any
+  profiling-interpreter compatibility claim.
+- Use as many execution agents as materially help, while preserving roadmap
+  dependency order and packet boundaries.
+- Before concurrent writing begins, name each owner, worktree, immutable base
+  SHA, file allowlist, expected artifact, and merge checkpoint. Writers may
+  share a checkout only when their file ownership is explicit and
+  non-overlapping.
+- Coordinate shared contracts, integration order, acceptance, primary
+  validation, review accounting, CI, PR/merge operations, and packet/ledger
+  accounting across the participating agents.
+
+## Tools
+
+Use `rg` for exact paths, strings, routes, schema fields, and documentation
+claims. Use GitNexus first for unfamiliar cross-cutting architecture, execution
+flows, or impact. For exact symbols, callers, references, diagnostics, and
+edits, use GitNexus with native repository tools such as `rg`, the editor,
+type-checker diagnostics, and focused tests. Do not repeat the same lookup
+across tools without a concrete uncertainty.
+
+Before editing a function, class, or method, run upstream GitNexus impact and
+report any HIGH or CRITICAL blast radius. Before committing, rerun
+`python3 scripts/bootstrap_dev_environment.py --component gitnexus --check`,
+then run GitNexus `detect_changes` against `origin/main` with the exact physical
+root and branch:
+`node tools/gitnexus/node_modules/gitnexus/dist/cli/index.js detect_changes --scope compare --base-ref origin/main --repo "$(pwd -P)" --branch "$(git branch --show-current)"`.
+Never target the ambiguous repository alias or a potentially stale local
+`main` branch.
+
+Use `agent-perf` for every CPU or speed claim. Profile a deterministic synthetic
+workload, also run the identical workload without a profiler, and compare one
+suspected cause at a time. The kernel performance objectives and early-stop
+rules are in the qualification and bakeoff documents.
+
+## Branches, issues, and review
 
 - Do not commit directly to `main`.
-- Start each coherent task from current `main` with a short-lived branch.
-- Use branch prefixes `feature/`, `fix/`, `docs/`, `chore/`, `test/`, `release/`, `hotfix/`, or `pivot/`. Reserve `pivot/` for tasks in the approved MCP-first roadmap.
-- Keep each branch focused on one issue, one reviewable task, or one release.
-- Do not create a long-lived `develop` branch.
-- Do not mix release prep with unrelated feature work.
-- Push task branches and open a PR for all changes headed to `main`.
-- Prefer squash merge for ordinary task PRs so `main` stays readable.
-- Use the PR as the review artifact even when there is only one maintainer.
-
-Recommended branch names:
-
-```text
-feature/<issue-number>-short-description
-fix/<issue-number>-short-description
-docs/<issue-number>-short-description
-chore/<issue-number>-short-description
-test/<issue-number>-short-description
-release/0.4.0
-hotfix/0.3.3
-```
-
-Before starting a task branch:
-
-```bash
-git switch main
-git pull --ff-only
-git switch -c docs/123-short-description
-```
-
-## Agent Boundaries
-
-Codex may create task branches, write tests, update docs, run local gates, prepare PR summaries, prepare release branches, and prepare changelog/version changes.
-
-Codex must not do these without explicit maintainer approval:
-
-- Push directly to `main`.
-- Create or push release tags.
-- Publish to TestPyPI or PyPI.
-- Add PyPI or TestPyPI API tokens.
-- Publish from a local machine.
-- Change privacy semantics.
-- Rename the PyPI distribution, import package, CLI command, plugin name, MCP tools, schema IDs, or stable JSON contracts.
-- Delete branches.
-- Force-push shared branches.
-
-Publishing must happen only through the approved GitHub Actions Trusted Publishing workflow and protected `testpypi`/`pypi` environments.
-
-## Issue And Milestone Workflow
-
-Use GitHub issues as the normal unit of work once the task is non-trivial. A branch should usually map to one issue and close it from the PR.
-
-Recommended labels:
-
-```text
-bug
-docs
-packaging
-release
-privacy
-security
-performance
-dashboard
-cli
-mcp
-parser-compat
-good-first-issue
-blocked
-1.0-blocker
-```
-
-Recommended milestones:
-
-```text
-0.4.0
-1.0-readiness
-1.0.0
-```
-
-Use patch releases for public blockers such as broken PyPI installs, missing package data, broken CLI entry points, privacy leaks, bad plugin installs, or bad runtime pins. Put planned stabilization work into the next minor release instead of bundling it into a patch.
-
-## Performance Work
-
-Use the `agent-perf` skill and CLI when optimizing localhost API endpoints, dashboard refreshes, report generation, content indexing, parser or SQLite hot paths, or other latency- or CPU-sensitive code, and when investigating a performance regression or making a speedup claim.
-
-Install the repository's pinned profiling tools with `uv sync --group performance`. Profile the smallest repeatable workload with synthetic or anonymized inputs; never profile production, live private databases, arbitrary processes, or real Codex session content. Record the identical workload without a profiler before making a performance claim. Change one suspected cause at a time, rerun the unprofiled workload, and use `agent-perf compare` only to compare attribution evidence rather than as proof of a speedup.
+- Start each packet from current `main` or the exact merged dependency named by
+  the packet, using a focused branch/worktree.
+- Use Conventional Commit prefixes and the ordinary branch prefixes
+  `feature/`, `fix/`, `docs/`, `chore/`, `test/`, `release/`, or `hotfix/`.
+- Keep one packet per PR unless the packet explicitly defines measured commit
+  boundaries.
+- Never delete a branch or worktree, rewrite history, force-push, publish, tag,
+  or change an external account without the required authority.
+- Linear is the intended program tracker. `docs/roadmap/LINEAR_BACKLOG.md` is
+  the source record, but do not create or update Linear work without explicit
+  maintainer direction.
+- The delegation policy above is standing maintainer authorization for this
+  roadmap. A parallel lane still requires explicit eligibility in the
+  controlling roadmap, design document, or packet contract.
+- After implementation and primary validation, use at most one comprehensive
+  read-only reviewer. Record total findings, accepted findings, reviewer token
+  status, and tokens per accepted finding.
 
 ## Validation
 
-Run focused tests first, then broader checks. Run the full local CI gate before opening or updating PRs that touch release, packaging, CLI contracts, MCP behavior, dashboard behavior, privacy behavior, schemas, generated docs/assets, or bundled plugin/skill files.
-
-## Source Inspection And Tool Output
-
-Large command outputs in Codex chat can be visually compacted by the transcript renderer. When inspecting source, especially after broad `rg`, `sed`, `nl`, generated dashboard assets, logs, or workflow output, do not treat a mangled rendered snippet as proof that the file is corrupt. Prefer small targeted file windows, `git diff`, `python -m py_compile`, focused tests, and CI as the source of truth. If exact syntax matters, inspect a narrow range or use a parser/compiler rather than relying on large printed source dumps.
+Run focused tests first. Use the repository-owned profiles:
 
 ```bash
-python -m ruff check .
-python -m mypy
-python -m pytest
-python -m pytest --cov=codex_usage_tracker --cov-report=term-missing
-python -m compileall src
-for file in src/codex_usage_tracker/plugin_data/dashboard/dashboard*.js; do
-  node --check "$file"
-done
-python scripts/check_release.py
-git diff --check
-rm -rf dist build src/codex_usage_tracker.egg-info src/codex_usage_tracking.egg-info
-python -m build
-python -m twine check dist/*
-python scripts/check_release.py --dist
+just vp  # fast maintained checks
+just v   # complete local CI profile
+just vc  # release/build candidate profile
 ```
 
-Additional smoke checks for touched CLI surfaces:
+For documentation-only authority work, at minimum run:
 
 ```bash
-python -m pytest
-python -m compileall src
-for file in src/codex_usage_tracker/plugin_data/dashboard/dashboard*.js; do
-  node --check "$file"
-done
-python -m build
-python scripts/check_release.py --dist
-git diff --check
-python scripts/smoke_installed_package.py
-codex-usage-tracker update-pricing --output /tmp/codex-usage-pricing.json
-codex-usage-tracker update-rate-card --output /tmp/codex-usage-rate-card.json
-codex-usage-tracker doctor
-codex-usage-tracker doctor --suggest-repair
-codex-usage-tracker dashboard --output /tmp/codex-usage-dashboard.html
-codex-usage-tracker serve-dashboard --help
-codex-usage-tracker init-allowance --output /tmp/codex-usage-allowance.json
-codex-usage-tracker parse-allowance --output /tmp/codex-usage-allowance.json "5h 79% 6:50 PM Weekly 33% Jun 7"
-codex-usage-tracker init-thresholds --output /tmp/codex-usage-thresholds.json
-codex-usage-tracker init-projects --output /tmp/codex-usage-projects.json
-codex-usage-tracker support-bundle --output /tmp/codex-usage-support.json
-codex-usage-tracker pricing-coverage
-codex-usage-tracker summary --preset by-subagent-role
-codex-usage-tracker expensive --limit 5
-```
-
-For documentation-only branches, at minimum run:
-
-```bash
-python scripts/check_release.py
+.venv/bin/python scripts/check_release.py
 git diff --check
 ```
 
-## Release Branches
+Broaden to `just v` or `just vc` whenever scope, packaging, release,
+database/schema, CLI, MCP/plugin/skill, generated assets, or public contracts
+change. Never bypass hooks. If project tools are missing from `PATH`, retry once
+with `.venv/bin` prepended.
 
-Use release branches only for version/changelog/pinning/publish prep, for example `release/0.4.0` or `hotfix/0.3.3`.
+Before completion, inspect `git status`, the diff stat, the stable diff,
+relevant checks, and staged files for secrets or private data. A packet is done
+only when its acceptance criteria and measurements pass, its checkbox/status
+are updated, and every remaining risk or approval gate is named.
 
-Release branches may include:
+## Release safety
 
-- Version bumps.
-- `CHANGELOG.md` updates.
-- Install/version wording updates.
-- Runtime package pins.
-- Publish workflow tweaks.
-- Release notes.
-- Final smoke-test fixes directly tied to release readiness.
+Publication occurs only from merged `main` or its exact release tag through the
+protected build-once workflow. Do not publish from a local machine. Do not
+create or push tags, change package/plugin/public schema identities, or rename
+the distribution without explicit maintainer approval. CK-16 owns versioning,
+release notes, exact artifact hashes, promotion evidence, and public-install
+smoke.
 
-Release branches must not include unrelated features.
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
 
-Recommended release sequence:
+This project is indexed by GitNexus as **codex-usage-tracker** (2777 symbols, 5498 relationships, 236 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-```bash
-git switch main
-git pull --ff-only
-git switch -c release/0.4.0
-# version/changelog/release edits
-python -m ruff check .
-python -m mypy
-python -m pytest
-python -m pytest --cov=codex_usage_tracker --cov-report=term-missing
-python -m compileall src
-for file in src/codex_usage_tracker/plugin_data/dashboard/dashboard*.js; do
-  node --check "$file"
-done
-python scripts/check_release.py
-git diff --check
-rm -rf dist build src/codex_usage_tracker.egg-info src/codex_usage_tracking.egg-info
-python -m build
-python -m twine check dist/*
-python scripts/check_release.py --dist
-git add .
-git commit -m "Prepare 0.4.0 release"
-git push -u origin release/0.4.0
-```
+> Index stale or pinned tool missing? Run `python3 scripts/bootstrap_dev_environment.py` from the exact project root. It uses only the integrity-locked repository-private GitNexus 1.6.9 tool; never use `npx`, `latest`, or a global install.
 
-Open a PR to `main` and merge only after CI passes. After merge, tag from updated `main`, not from an unreviewed release branch, and only after explicit maintainer approval:
+## Always Do
 
-```bash
-git switch main
-git pull --ff-only
-git tag -a v0.4.0 -m "codex-usage-tracker 0.4.0"
-git push origin v0.4.0
-```
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, use the exact physical worktree, current branch, and remote base `origin/main`; never use an ambiguous repository alias or stale local `main`.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
 
-## Privacy Rules
+## Never Do
 
-- Never commit real Codex session logs.
-- Never commit real prompts, assistant text, tool outputs, pasted secrets, message snippets, or raw Codex logs.
-- The local content index may store bounded snippets in the user-owned SQLite database by approved design. Do not expose indexed/raw content through default CSV, generated HTML, support bundles, screenshots, aggregate JSON, fixtures based on real logs, or commits.
-- Raw context may be read during refresh/content indexing or explicit selected-call context loading. Keep shareable outputs aggregate-first unless a command is explicitly documented as a local raw/content export.
-- Keep fixture data synthetic.
-- Keep local SQLite databases, CSV exports, HTML dashboards, caches, and virtualenvs out of git.
-- Do not hard-code real current USD model pricing in source; refresh the local config from OpenAI's published pricing docs or use manual local overrides. Internal Codex model estimates must be explicitly marked as estimates with source and rationale metadata.
-- Source-stamped Codex credit rate-card snapshots must include source/date metadata, confidence labels, and local override support. Manually copied allowance remaining values stay in local config only.
+- NEVER edit a function, class, or method without first running `impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit changes without running `detect_changes()` to check affected scope.
 
-## Definition Of Done
+## Resources
 
-- Parser and content-index handling are covered by synthetic session logs.
-- SQLite refresh is idempotent.
-- MCP tool functions return concise aggregate data by default; content-aware tools must be explicit local investigation surfaces.
-- Dashboard generated HTML is aggregate-first and does not embed indexed/raw content.
-- Doctor, summary presets, dashboard, and expensive-call views work from CLI and MCP wrappers.
-- `codex-usage-tracker install-plugin` can register the installed package without relying on a source-checkout symlink.
-- `python -m codex_usage_tracker` and `codex-usage-tracker --version` both work.
-- Wheel and source distribution builds include plugin assets and the Codex skill.
-- `scripts/check_release.py --dist` passes before any public release.
-- Pricing coverage clearly separates configured, estimated, and unpriced model usage.
-- Codex credit coverage clearly separates exact rate-card matches, inferred aliases, and missing credit rates.
-- Dashboard Calls and Threads views share filters, totals, and aggregate-first hover details.
-- Dashboard usage docs are updated when the visible dashboard workflow changes, and screenshots must be generated from synthetic data only.
-- Dashboard refresh is localhost-only, generated HTML stays aggregate-first, and context loading is lazy, localhost-only, explicit, redacted, and not embedded in the static HTML payload.
-- Subagent calls preserve logged parent-session metadata, latch to parent thread labels when available, and auto-review attachment is clearly marked when inferred.
-- Tests and compile checks pass.
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/codex-usage-tracker/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/codex-usage-tracker/clusters` | All functional areas |
+| `gitnexus://repo/codex-usage-tracker/processes` | All execution flows |
+| `gitnexus://repo/codex-usage-tracker/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->
