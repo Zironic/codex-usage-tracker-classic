@@ -9,6 +9,9 @@ from codex_usage_tracker.allowance_intelligence.model import (
 )
 
 __all__ = (
+    "ALLOWANCE_EXPORT_COMPACT_SCHEMA",
+    "ALLOWANCE_EXPORT_FORMATS",
+    "ALLOWANCE_EXPORT_VERBOSE_SCHEMA",
     "AllowanceReport",
     "EVIDENCE_GRADES",
     "WINDOW_KIND_CHOICES",
@@ -26,6 +29,14 @@ def __getattr__(name: str) -> Any:
     """Load report builders lazily to keep store materialization acyclic."""
 
     if name in {
+        "ALLOWANCE_EXPORT_COMPACT_SCHEMA",
+        "ALLOWANCE_EXPORT_FORMATS",
+        "ALLOWANCE_EXPORT_VERBOSE_SCHEMA",
+    }:
+        from codex_usage_tracker.allowance_intelligence import export_payload
+
+        return getattr(export_payload, name)
+    if name in {
         "AllowanceReport",
         "build_allowance_diagnostics_report",
         "build_allowance_export_report",
@@ -34,7 +45,12 @@ def __getattr__(name: str) -> Any:
         from codex_usage_tracker.allowance_intelligence import reports
 
         return getattr(reports, name)
-    if name in {"build_allowance_status", "build_allowance_series", "build_allowance_evidence"}:
+    if name in {
+        "build_allowance_status",
+        "build_allowance_series",
+        "build_allowance_evidence",
+    }:
         from codex_usage_tracker.allowance_intelligence import service
+
         return getattr(service, name)
     raise AttributeError(name)
