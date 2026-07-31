@@ -8,16 +8,19 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
-from codex_usage_tracker.allowance_intelligence.capacity_history import (
-    load_capacity_cycles,
-)
+from codex_usage_tracker.allowance_intelligence.capacity_history import load_capacity_cycles
 from codex_usage_tracker.allowance_intelligence.change_detection import (
     MULTI_DETECTOR_VERSION,
     detect_cycle_changes,
 )
+from codex_usage_tracker.allowance_intelligence.plan_comparison import (
+    PLAN_COMPARISON_VERSION,
+    build_plan_meter_comparison,
+)
 from codex_usage_tracker.pricing.allowance_config import load_allowance_config
 
 ANALYSIS_SCHEMA = "codex-usage-tracker-allowance-analysis-v2"
+ANALYSIS_MODEL_VERSION = f"{MULTI_DETECTOR_VERSION}+{PLAN_COMPARISON_VERSION}"
 
 
 def build_allowance_analysis(
@@ -65,11 +68,21 @@ def build_allowance_analysis(
         permutation_count=int(resolved["permutation_count"]),
         familywise_alpha=float(resolved["familywise_alpha"]),
     )
+    plan_comparison = build_plan_meter_comparison(
+        connection,
+        source_revision=source_revision,
+        archive_scope=archive_scope,
+        window_kind=window_kind,
+        cohort_key=cohort_key,
+        min_cycles_per_plan=int(resolved["min_cycles_per_regime"]),
+        bootstrap_samples=int(resolved["permutation_count"]),
+        permutation_samples=int(resolved["permutation_count"]),
+    )
     payload = {
         "schema": ANALYSIS_SCHEMA,
         "snapshot_id": snapshot_id,
         "source_revision": source_revision,
-        "model_version": MULTI_DETECTOR_VERSION,
+        "model_version": ANALYSIS_MODEL_VERSION,
         "rate_card_revision": resolved_rate_revision,
         "generated_at": generated_at,
         "data_as_of": data_as_of,
@@ -79,10 +92,11 @@ def build_allowance_analysis(
         "forecast_horizon": forecast_horizon,
         "parameters": resolved,
         "quality": _usage_quality(connection),
+        "plan_comparison": plan_comparison,
         **detected,
     }
     cache_model_version = (
-        f"{MULTI_DETECTOR_VERSION}:{resolved_rate_revision}:"
+        f"{ANALYSIS_MODEL_VERSION}:{resolved_rate_revision}:"
         f"{hashlib.sha256(json.dumps(resolved, sort_keys=True).encode()).hexdigest()[:16]}"
     )
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -196,7 +210,7 @@ def allowance_analysis_request(
         raise ValueError("familywise_alpha must be between 0 and 1")
     semantic = {
         "source_revision": source_revision,
-        "model_version": MULTI_DETECTOR_VERSION,
+        "model_version": ANALYSIS_MODEL_VERSION,
         "rate_card_revision": resolved_rate_revision,
         "archive_scope": archive_scope,
         "window_kind": window_kind,
@@ -209,7 +223,7 @@ def allowance_analysis_request(
     return {
         "snapshot_id": snapshot_id,
         "source_revision": source_revision,
-        "model_version": MULTI_DETECTOR_VERSION,
+        "model_version": ANALYSIS_MODEL_VERSION,
         "rate_card_revision": resolved_rate_revision,
         "data_as_of": data_as_of,
         "parameters": resolved,
