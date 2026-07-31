@@ -137,6 +137,7 @@ def allowance_analysis_payload(
         "model_version": request["model_version"],
         "rate_card_revision": request["rate_card_revision"],
         "parameters": request["parameters"],
+        "plan_comparison": None,
         "next": {"action": "start_analysis_job"},
     }
 
