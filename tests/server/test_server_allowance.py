@@ -56,11 +56,12 @@ def test_allowance_diagnostics_and_export_accept_unbounded_limits(
     )
 
     diagnostics_summary = diagnostics["summary"]
-    export_summary = export["summary"]
+    export_coverage = export["coverage"]
     assert isinstance(diagnostics_summary, dict)
-    assert isinstance(export_summary, dict)
+    assert isinstance(export_coverage, dict)
     assert diagnostics_summary["observation_count"] == 2
-    assert export_summary["observation_count"] == 2
+    assert export_coverage["exported_observation_count"] == 2
+    assert export_coverage["truncated"] is False
 
 
 def test_allowance_history_rejects_zero_limit_and_documents_maximum(tmp_path: Path) -> None:
@@ -87,7 +88,7 @@ def test_allowance_diagnostics_payload_validates_window_kind(tmp_path: Path) -> 
         )
 
 
-def test_allowance_export_payload_is_strict_privacy(tmp_path: Path) -> None:
+def test_allowance_export_payload_defaults_to_compact_strict_privacy(tmp_path: Path) -> None:
     db_path = _allowance_db(tmp_path)
 
     payload = server_allowance.allowance_export_payload(
@@ -98,9 +99,34 @@ def test_allowance_export_payload_is_strict_privacy(tmp_path: Path) -> None:
         include_archived_default=False,
     )
 
-    assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v1"
+    assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v2"
     assert payload["privacy_mode"] == "strict"
-    assert "summary" in payload
+    assert payload["request"]["limit"] is None
+    assert payload["coverage"]["truncated"] is False
+
+
+def test_allowance_export_payload_preserves_verbose_v1(tmp_path: Path) -> None:
+    payload = server_allowance.allowance_export_payload(
+        "format=verbose",
+        db_path=_allowance_db(tmp_path),
+        allowance_path=tmp_path / "allowance.json",
+        rate_card_path=tmp_path / "rate-card.json",
+        include_archived_default=False,
+    )
+
+    assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v1"
+    assert "change_candidates" in payload
+
+
+def test_allowance_export_payload_rejects_unknown_format(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="export_format must be compact or verbose"):
+        server_allowance.allowance_export_payload(
+            "format=xml",
+            db_path=_allowance_db(tmp_path),
+            allowance_path=tmp_path / "allowance.json",
+            rate_card_path=tmp_path / "rate-card.json",
+            include_archived_default=False,
+        )
 
 
 def test_allowance_diagnostics_handler_reuses_generation_cache(
