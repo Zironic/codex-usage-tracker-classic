@@ -14,9 +14,7 @@ from codex_usage_tracker.core.paths import (
 )
 from codex_usage_tracker.dashboard_service import DEFAULT_SERVICE_PORT
 from codex_usage_tracker.pricing.api import OPENAI_PRICING_MD_URL, VALID_PRICING_TIERS
-from codex_usage_tracker.reports.api import (
-    EXPENSIVE_PRESET_CHOICES,
-)
+from codex_usage_tracker.reports.api import EXPENSIVE_PRESET_CHOICES
 
 
 def _add_dashboard_parsers(
@@ -123,10 +121,7 @@ def _add_dashboard_service_parser(
         help="Persistent dashboard port",
     )
     actions.add_parser("status", help="Show dashboard service health")
-    actions.add_parser(
-        "uninstall",
-        help="Stop and remove the dashboard service",
-    )
+    actions.add_parser("uninstall", help="Stop and remove the dashboard service")
 
 
 def _add_expensive_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -285,6 +280,14 @@ def _add_allowance_intelligence_parsers(
             "compact writes the LLM-oriented v2 table format; "
             "verbose writes the compatibility v1 object format"
         ),
+    )
+    export.add_argument(
+        "--from-plan",
+        help="Old subscription plan; defaults to the latest observed transition.",
+    )
+    export.add_argument(
+        "--to-plan",
+        help="New subscription plan; must be used with --from-plan.",
     )
     export.add_argument("--output", type=Path, default=None)
     export.add_argument("--json", action="store_true", dest="as_json")
