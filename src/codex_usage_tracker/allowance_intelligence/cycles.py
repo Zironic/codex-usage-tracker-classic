@@ -11,20 +11,27 @@ from typing import Any
 
 from .contracts import AllowanceCohort, AllowanceCycle, AllowanceInterval, AllowancePointKind
 
-MODEL_VERSION = "reset-aware-v4"
+MODEL_VERSION = "reset-aware-v5"
 RESET_JITTER_SECONDS = 60
 AGING_SECONDS = {"weekly": 6 * 60 * 60, "five_hour": 15 * 60}
 
 
+def normalize_plan_type(value: object) -> str:
+    """Normalize subscription-plan labels used by telemetry and local config."""
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "unknown"
+    normalized = raw.replace("-", "_").replace(" ", "_")
+    return "prolite" if normalized == "pro_lite" else normalized
+
+
 def observed_plan_type(rows: Iterable[dict[str, Any]]) -> str:
     """Return one explicit normalized plan type, or a conservative sentinel."""
-    values = set()
-    for row in rows:
-        value = str(row.get("plan_type") or "").strip().lower()
-        if not value:
-            continue
-        normalized = value.replace("-", "_").replace(" ", "_")
-        values.add("prolite" if normalized == "pro_lite" else normalized)
+    values = {
+        normalized
+        for normalized in (normalize_plan_type(row.get("plan_type")) for row in rows)
+        if normalized != "unknown"
+    }
     if not values:
         return "unknown"
     if len(values) > 1:
