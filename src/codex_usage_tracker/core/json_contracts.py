@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from codex_usage_tracker.core.json_contract_allowance import (
+    ALLOWANCE_EXTENSION_JSON_PAYLOAD_CONTRACTS,
+)
 from codex_usage_tracker.core.json_contract_cli import CLI_JSON_PAYLOAD_CONTRACTS
 from codex_usage_tracker.core.json_contract_diagnostics import DIAGNOSTIC_JSON_PAYLOAD_CONTRACTS
 from codex_usage_tracker.core.json_contract_server import SERVER_JSON_PAYLOAD_CONTRACTS
@@ -262,6 +265,7 @@ JSON_PAYLOAD_CONTRACTS: dict[str, dict[str, Any]] = {
     **SUBAGENT_JSON_PAYLOAD_CONTRACTS,
     **VISUALIZATION_JSON_PAYLOAD_CONTRACTS,
     **MCP_EVIDENCE_JSON_PAYLOAD_CONTRACTS,
+    **ALLOWANCE_EXTENSION_JSON_PAYLOAD_CONTRACTS,
 }
 
 
