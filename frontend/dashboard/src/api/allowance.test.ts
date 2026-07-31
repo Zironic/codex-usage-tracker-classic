@@ -43,9 +43,12 @@ describe('allowance API', () => {
     expect(new Headers(init?.headers).get('X-Codex-Usage-Token')).toBe(runtime.apiToken);
   });
 
-  it('supports explicit None limits and strict evidence export', async () => {
+  it('defaults evidence export to compact v2 with an explicit unbounded limit', async () => {
     const diagnostics = { schema: 'codex-usage-tracker-allowance-diagnostics-v1' };
-    const exported = { schema: 'codex-usage-tracker-allowance-evidence-export-v1', privacy_mode: 'strict' };
+    const exported = {
+      schema: 'codex-usage-tracker-allowance-evidence-export-v2',
+      privacy_mode: 'strict',
+    };
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(diagnostics))
       .mockResolvedValueOnce(jsonResponse(exported));
@@ -57,11 +60,29 @@ describe('allowance API', () => {
     const exportUrl = new URL(String(fetchMock.mock.calls[1][0]), 'http://localhost');
     expect(diagnosticsUrl.searchParams.get('limit')).toBe('None');
     expect(diagnosticsUrl.searchParams.get('window_kind')).toBe('weekly');
+    expect(exportUrl.searchParams.get('limit')).toBe('None');
+    expect(exportUrl.searchParams.get('format')).toBe('compact');
     expect(exportUrl.searchParams.has('privacy_mode')).toBe(false);
   });
 
+  it('can request the historical verbose v1 export', async () => {
+    const exported = {
+      schema: 'codex-usage-tracker-allowance-evidence-export-v1',
+      privacy_mode: 'strict',
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(exported));
+
+    await expect(loadAllowanceEvidenceExport(runtime, {
+      format: 'verbose',
+      limit: null,
+    })).resolves.toEqual(exported);
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost');
+    expect(url.searchParams.get('format')).toBe('verbose');
+  });
+
   it('rejects incompatible schemas and file mode before the payload is used', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ schema: 'future-v2' }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ schema: 'future-v3' }));
 
     await expect(loadAllowanceDiagnostics(runtime)).rejects.toThrow('unsupported schema');
     await expect(loadAllowanceHistory({ ...runtime, fileMode: true })).rejects.toThrow('localhost dashboard server');
