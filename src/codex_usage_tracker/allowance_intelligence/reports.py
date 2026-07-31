@@ -134,7 +134,7 @@ def build_allowance_export_report(
     include_archived: bool = False,
     window_kind: str | None = None,
     limit: int | None = None,
-    export_format: str = "compact",
+    export_format: str = "verbose",
 ) -> AllowanceReport:
     """Build a strict-privacy local evidence bundle for manual sharing."""
 
@@ -177,11 +177,17 @@ def build_allowance_export_report(
         for window in windows
         if isinstance(window, dict)
     )
+    selected_start_at = (
+        selection.rows[0].get("event_timestamp") if selection.rows else None
+    )
+    selected_end_at = (
+        selection.rows[-1].get("event_timestamp") if selection.rows else None
+    )
     coverage = AllowanceExportCoverage(
         matched_observation_count=selection.matched_count,
         exported_observation_count=selection.exported_count,
-        start_date=_date_bucket(selection.matched_start_at),
-        end_date=_date_bucket(selection.matched_end_at),
+        start_date=_date_bucket(selected_start_at),
+        end_date=_date_bucket(selected_end_at),
         window_count=len(windows),
         span_count=span_count,
         truncated=selection.truncated,
