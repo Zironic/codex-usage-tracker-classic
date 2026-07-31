@@ -19,6 +19,9 @@ from codex_usage_tracker.allowance_intelligence.model import (
     WINDOW_KIND_CHOICES,
     build_allowance_analysis,
 )
+from codex_usage_tracker.allowance_intelligence.plan_comparison import (
+    build_plan_meter_comparison,
+)
 from codex_usage_tracker.core.paths import (
     DEFAULT_ALLOWANCE_PATH,
     DEFAULT_DB_PATH,
@@ -29,10 +32,14 @@ from codex_usage_tracker.pricing.allowance import (
     annotate_rows_with_allowance,
     load_allowance_config,
 )
+from codex_usage_tracker.store.allowance_materialization import (
+    materialize_allowance_intelligence,
+)
 from codex_usage_tracker.store.allowance_observations import (
     AllowanceObservationSelection,
     query_allowance_observation_selection,
 )
+from codex_usage_tracker.store.connection import connect
 
 ALLOWANCE_HISTORY_SCHEMA = "codex-usage-tracker-allowance-history-v1"
 ALLOWANCE_DIAGNOSTICS_SCHEMA = "codex-usage-tracker-allowance-diagnostics-v1"
@@ -135,12 +142,16 @@ def build_allowance_export_report(
     window_kind: str | None = None,
     limit: int | None = None,
     export_format: str = "verbose",
+    from_plan: str | None = None,
+    to_plan: str | None = None,
 ) -> AllowanceReport:
     """Build a strict-privacy local evidence bundle for manual sharing."""
 
     _validate_window_kind(window_kind)
     if export_format not in ALLOWANCE_EXPORT_FORMATS:
         raise ValueError("export_format must be compact or verbose")
+    if bool(from_plan) != bool(to_plan):
+        raise ValueError("from_plan and to_plan must be provided together")
     selection, rows = _annotated_observation_selection(
         db_path=db_path,
         allowance_path=allowance_path,
@@ -177,12 +188,8 @@ def build_allowance_export_report(
         for window in windows
         if isinstance(window, dict)
     )
-    selected_start_at = (
-        selection.rows[0].get("event_timestamp") if selection.rows else None
-    )
-    selected_end_at = (
-        selection.rows[-1].get("event_timestamp") if selection.rows else None
-    )
+    selected_start_at = selection.rows[0].get("event_timestamp") if selection.rows else None
+    selected_end_at = selection.rows[-1].get("event_timestamp") if selection.rows else None
     coverage = AllowanceExportCoverage(
         matched_observation_count=selection.matched_count,
         exported_observation_count=selection.exported_count,
@@ -192,6 +199,12 @@ def build_allowance_export_report(
         span_count=span_count,
         truncated=selection.truncated,
     )
+    plan_comparison = _plan_comparison_for_export(
+        db_path,
+        include_archived=include_archived,
+        from_plan=from_plan,
+        to_plan=to_plan,
+    )
     return AllowanceReport(
         build_compact_allowance_export(
             diagnostics,
@@ -200,9 +213,34 @@ def build_allowance_export_report(
             window_kind=window_kind,
             requested_limit=limit,
             coverage=coverage,
+            plan_comparison=plan_comparison,
             notes=notes,
         )
     )
+
+
+def _plan_comparison_for_export(
+    db_path: Path,
+    *,
+    include_archived: bool,
+    from_plan: str | None,
+    to_plan: str | None,
+) -> dict[str, Any]:
+    with connect(db_path) as connection:
+        materialize_allowance_intelligence(connection)
+        source = connection.execute(
+            "SELECT source_revision FROM allowance_source_state WHERE state_id = 1"
+        ).fetchone()
+        source_revision = str(source[0]) if source else "missing"
+        return build_plan_meter_comparison(
+            connection,
+            source_revision=source_revision,
+            archive_scope="all" if include_archived else "active",
+            window_kind="weekly",
+            cohort_key="codex",
+            from_plan=from_plan,
+            to_plan=to_plan,
+        )
 
 
 def _annotated_observation_selection(
@@ -310,9 +348,7 @@ def _privacy_filtered_span(
     span: dict[str, Any], *, privacy_mode: str
 ) -> dict[str, Any]:
     payload = dict(span)
-    payload["start_observed_date"] = _date_bucket(
-        payload.get("start_observed_at")
-    )
+    payload["start_observed_date"] = _date_bucket(payload.get("start_observed_at"))
     payload["end_observed_date"] = _date_bucket(payload.get("end_observed_at"))
     if privacy_mode == "strict":
         payload.pop("record_id", None)
