@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from itertools import combinations
 from math import comb
 from statistics import median
@@ -85,30 +85,36 @@ def comparison_status(
     statistics: Mapping[str, Any],
 ) -> str:
     """Classify whether the fixed comparison supports a larger or smaller meter."""
-    ratio = relative.get("after_to_before_ratio")
-    if not isinstance(ratio, int | float):
+    ratio_value = relative.get("after_to_before_ratio")
+    if not isinstance(ratio_value, int | float):
         return "descriptive_only"
+    ratio = float(ratio_value)
     if before_count < minimum or after_count < minimum:
         return "insufficient_completed_cycles"
     interval = statistics.get("ratio_confidence_interval_95")
     permutation = statistics.get("permutation")
-    cliffs_delta = statistics.get("cliffs_delta_after_vs_before")
+    cliffs_value = statistics.get("cliffs_delta_after_vs_before")
     if not isinstance(interval, Mapping) or not isinstance(permutation, Mapping):
         return "descriptive_only"
-    low = interval.get("low")
-    high = interval.get("high")
+    low_value = interval.get("low")
+    high_value = interval.get("high")
     p_value = permutation.get("two_sided_p_value")
+    if not all(
+        isinstance(value, int | float)
+        for value in (low_value, high_value, p_value, cliffs_value)
+    ):
+        return "no_supported_difference"
+    low = float(low_value)
+    high = float(high_value)
+    probability = float(p_value)
+    cliffs_delta = float(cliffs_value)
     supported = (
-        isinstance(low, int | float)
-        and isinstance(high, int | float)
-        and isinstance(p_value, int | float)
-        and isinstance(cliffs_delta, int | float)
-        and float(p_value) < 0.05
-        and abs(float(cliffs_delta)) >= _STRONG_EFFECT_THRESHOLD
+        probability < 0.05
+        and abs(cliffs_delta) >= _STRONG_EFFECT_THRESHOLD
     )
-    if supported and float(ratio) < 1 and float(high) < 1:
+    if supported and ratio < 1 and high < 1:
         return "supported_smaller"
-    if supported and float(ratio) > 1 and float(low) > 1:
+    if supported and ratio > 1 and low > 1:
         return "supported_larger"
     return "no_supported_difference"
 
@@ -173,10 +179,10 @@ def _fixed_label_permutation(
     observed_statistic = abs(math.log(observed_ratio))
     assignment_count = comb(len(values), before_size)
     if assignment_count <= _EXACT_LABEL_ASSIGNMENT_LIMIT:
-        assignments = combinations(range(len(values)), before_size)
+        exact_assignments = combinations(range(len(values)), before_size)
         return _evaluate_assignments(
             values,
-            assignments,
+            exact_assignments,
             before_size=before_size,
             observed_ratio=observed_ratio,
             observed_statistic=observed_statistic,
@@ -185,13 +191,13 @@ def _fixed_label_permutation(
             monte_carlo=False,
         )
     generator = random.Random(seed)  # nosec B311 - deterministic statistical sampling
-    assignments = (
+    sampled_assignments = (
         tuple(sorted(generator.sample(range(len(values)), before_size)))
         for _ in range(samples)
     )
     return _evaluate_assignments(
         values,
-        assignments,
+        sampled_assignments,
         before_size=before_size,
         observed_ratio=observed_ratio,
         observed_statistic=observed_statistic,
@@ -203,7 +209,7 @@ def _fixed_label_permutation(
 
 def _evaluate_assignments(
     values: list[float],
-    assignments: object,
+    assignments: Iterable[tuple[int, ...]],
     *,
     before_size: int,
     observed_ratio: float,
@@ -215,7 +221,7 @@ def _evaluate_assignments(
     two_sided_extreme = 0
     smaller_extreme = 0
     evaluated = 0
-    for before_indices in assignments:  # type: ignore[union-attr]
+    for before_indices in assignments:
         before_set = set(before_indices)
         permuted_before = [values[index] for index in before_indices]
         permuted_after = [
