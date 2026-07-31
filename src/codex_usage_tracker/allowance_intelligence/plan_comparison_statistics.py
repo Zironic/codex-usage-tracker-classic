@@ -99,19 +99,19 @@ def comparison_status(
     low_value = interval.get("low")
     high_value = interval.get("high")
     p_value = permutation.get("two_sided_p_value")
-    if not all(
-        isinstance(value, int | float)
-        for value in (low_value, high_value, p_value, cliffs_value)
-    ):
+    if not isinstance(low_value, int | float):
+        return "no_supported_difference"
+    if not isinstance(high_value, int | float):
+        return "no_supported_difference"
+    if not isinstance(p_value, int | float):
+        return "no_supported_difference"
+    if not isinstance(cliffs_value, int | float):
         return "no_supported_difference"
     low = float(low_value)
     high = float(high_value)
     probability = float(p_value)
     cliffs_delta = float(cliffs_value)
-    supported = (
-        probability < 0.05
-        and abs(cliffs_delta) >= _STRONG_EFFECT_THRESHOLD
-    )
+    supported = probability < 0.05 and abs(cliffs_delta) >= _STRONG_EFFECT_THRESHOLD
     if supported and ratio < 1 and high < 1:
         return "supported_smaller"
     if supported and ratio > 1 and low > 1:
