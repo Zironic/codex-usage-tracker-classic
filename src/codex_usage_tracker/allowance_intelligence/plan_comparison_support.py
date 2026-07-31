@@ -220,7 +220,11 @@ def _transition_candidates(
     known_indices: Sequence[int],
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
-    for left_index, right_index in zip(known_indices, known_indices[1:]):
+    for left_index, right_index in zip(
+        known_indices,
+        known_indices[1:],
+        strict=False,
+    ):
         before_run = runs[left_index]
         after_run = runs[right_index]
         if before_run["plan_type"] == after_run["plan_type"]:
