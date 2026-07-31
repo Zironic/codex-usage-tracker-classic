@@ -107,12 +107,26 @@ def load_capacity_cycles(
 
 def eligible_capacity_cycles(
     cycles: Sequence[Mapping[str, Any]],
+    *,
+    require_known_plan: bool = False,
 ) -> list[dict[str, Any]]:
     """Return completed, quality-approved, priced capacity cycles."""
-    return [dict(row) for row in cycles if capacity_cycle_exclusion_reason(row) is None]
+    return [
+        dict(row)
+        for row in cycles
+        if capacity_cycle_exclusion_reason(
+            row,
+            require_known_plan=require_known_plan,
+        )
+        is None
+    ]
 
 
-def capacity_cycle_exclusion_reason(row: Mapping[str, Any]) -> str | None:
+def capacity_cycle_exclusion_reason(
+    row: Mapping[str, Any],
+    *,
+    require_known_plan: bool = False,
+) -> str | None:
     """Explain why one cycle cannot vote in capacity comparisons."""
     if row.get("status") == "open":
         return "open_cycle"
@@ -127,11 +141,12 @@ def capacity_cycle_exclusion_reason(row: Mapping[str, Any]) -> str | None:
         return "low_pricing_coverage"
     if int(row.get("conflict_count") or 0) != 0:
         return "conflict"
-    plan_type = normalize_plan_type(row.get("plan_type"))
-    if plan_type == "mixed":
-        return "mixed_plan"
-    if plan_type in _INVALID_PLAN_TYPES:
-        return "unknown_plan"
+    if require_known_plan:
+        plan_type = normalize_plan_type(row.get("plan_type"))
+        if plan_type == "mixed":
+            return "mixed_plan"
+        if plan_type in _INVALID_PLAN_TYPES:
+            return "unknown_plan"
     value = row.get("credits_per_percent")
     if not isinstance(value, int | float) or not math.isfinite(float(value)):
         return "missing_capacity"
