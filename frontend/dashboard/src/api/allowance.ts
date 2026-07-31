@@ -1,3 +1,4 @@
+import type { AllowancePlanComparison } from './allowancePlanComparison';
 import type { ContextRuntime } from './types';
 
 export type AllowanceWindowKind = 'weekly' | 'five_hour';
@@ -205,6 +206,7 @@ export type AllowanceEvidenceExportV2Payload = {
     candidate_change_count: number;
     research_readiness: AllowanceResearchReadiness;
   };
+  plan_comparison: AllowancePlanComparison;
   windows: Array<{
     scope: {
       window_kind: AllowanceWindowKind;
@@ -234,6 +236,8 @@ type AllowanceRequest = {
   limit?: number | null;
   windowKind?: AllowanceWindowKind;
   format?: 'compact' | 'verbose';
+  fromPlan?: string;
+  toPlan?: string;
 };
 
 export async function loadAllowanceHistory(
@@ -271,6 +275,8 @@ function requestParams(options: AllowanceRequest, includePrivacyMode: boolean): 
   if (options.includeArchived) params.set('include_archived', '1');
   if (options.windowKind) params.set('window_kind', options.windowKind);
   if (options.format) params.set('format', options.format);
+  if (options.fromPlan) params.set('from_plan', options.fromPlan);
+  if (options.toPlan) params.set('to_plan', options.toPlan);
   if (includePrivacyMode) params.set('privacy_mode', 'normal');
   return params;
 }
