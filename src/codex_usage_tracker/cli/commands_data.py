@@ -69,18 +69,39 @@ def _run_allowance_export(args: argparse.Namespace) -> int:
         include_archived=args.include_archived,
         window_kind=args.window_kind,
         limit=_allowance_report_limit(args.limit),
+        export_format=args.export_format,
     )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(report.payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        if args.export_format == "compact":
+            encoded = json.dumps(
+                report.payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        else:
+            encoded = json.dumps(
+                report.payload,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        args.output.write_text(encoded + "\n", encoding="utf-8")
     if args.as_json:
         print_json(report.payload)
         return 0
     if args.output is not None:
-        print(f"Wrote allowance evidence export to {args.output}")
+        coverage = report.payload.get("coverage")
+        if isinstance(coverage, dict):
+            print(
+                "Wrote allowance evidence export to "
+                f"{args.output} ({coverage.get('exported_observation_count', 0)} "
+                f"observations, {coverage.get('start_date')} to "
+                f"{coverage.get('end_date')}, "
+                f"truncated={coverage.get('truncated')})"
+            )
+        else:
+            print(f"Wrote allowance evidence export to {args.output}")
         return 0
     print(report.render())
     return 0
