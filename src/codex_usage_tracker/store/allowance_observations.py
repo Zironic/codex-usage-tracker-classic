@@ -48,8 +48,6 @@ class AllowanceObservationSelection:
     rows: list[dict[str, Any]]
     matched_count: int
     exported_count: int
-    matched_start_at: str | None
-    matched_end_at: str | None
     truncated: bool
 
 
@@ -154,14 +152,7 @@ def query_allowance_observation_selection(
         )
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
         metadata = conn.execute(
-            f"""
-            SELECT
-                COUNT(*) AS matched_count,
-                MIN(event_timestamp) AS matched_start_at,
-                MAX(event_timestamp) AS matched_end_at
-            FROM allowance_observations
-            {where_sql}
-            """,
+            f"SELECT COUNT(*) AS matched_count FROM allowance_observations {where_sql}",
             params,
         ).fetchone()
         rows = _query_observation_rows(
@@ -177,16 +168,6 @@ def query_allowance_observation_selection(
         rows=result_rows,
         matched_count=matched_count,
         exported_count=len(result_rows),
-        matched_start_at=(
-            str(metadata["matched_start_at"])
-            if metadata is not None and metadata["matched_start_at"] is not None
-            else None
-        ),
-        matched_end_at=(
-            str(metadata["matched_end_at"])
-            if metadata is not None and metadata["matched_end_at"] is not None
-            else None
-        ),
         truncated=limit is not None and len(result_rows) < matched_count,
     )
 
