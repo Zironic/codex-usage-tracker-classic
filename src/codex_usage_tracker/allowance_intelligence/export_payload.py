@@ -6,12 +6,8 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-ALLOWANCE_EXPORT_COMPACT_SCHEMA = (
-    "codex-usage-tracker-allowance-evidence-export-v2"
-)
-ALLOWANCE_EXPORT_VERBOSE_SCHEMA = (
-    "codex-usage-tracker-allowance-evidence-export-v1"
-)
+ALLOWANCE_EXPORT_COMPACT_SCHEMA = "codex-usage-tracker-allowance-evidence-export-v2"
+ALLOWANCE_EXPORT_VERBOSE_SCHEMA = "codex-usage-tracker-allowance-evidence-export-v1"
 ALLOWANCE_EXPORT_FORMATS = ("compact", "verbose")
 
 SPAN_COLUMNS = (
@@ -22,6 +18,19 @@ SPAN_COLUMNS = (
     "estimated_usage_credits",
     "row_count",
 )
+
+_FORBIDDEN_COMPARISON_KEYS = {
+    "cycle_id",
+    "cycle_ids",
+    "record_id",
+    "record_ids",
+    "session_id",
+    "session_ids",
+    "snapshot_id",
+    "source_revision",
+    "thread_key",
+    "path",
+}
 
 
 @dataclass(frozen=True)
@@ -46,6 +55,7 @@ def build_compact_allowance_export(
     requested_limit: int | None,
     coverage: AllowanceExportCoverage,
     notes: Sequence[str],
+    plan_comparison: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the column-oriented v2 export intended for model analysis."""
 
@@ -74,31 +84,22 @@ def build_compact_allowance_export(
             "span_columns": list(SPAN_COLUMNS),
             "conventions": {
                 "null_end_observed_date": "same_as_start_observed_date",
-                "delta_usage_percent": (
-                    "end_used_percent - start_used_percent"
-                ),
-                "credits_per_percent": (
-                    "estimated_usage_credits / delta_usage_percent"
-                ),
-                "confidence_override": (
-                    "[zero_based_span_row_index, confidence]"
+                "delta_usage_percent": "end_used_percent - start_used_percent",
+                "credits_per_percent": "estimated_usage_credits / delta_usage_percent",
+                "confidence_override": "[zero_based_span_row_index, confidence]",
+                "after_to_before_ratio": (
+                    "after median completed-cycle credits_per_percent divided by "
+                    "before median completed-cycle credits_per_percent"
                 ),
             },
         },
         "summary": {
-            "primary_window_kind": summary_mapping.get(
-                "primary_window_kind"
-            ),
-            "primary_evidence_grade": summary_mapping.get(
-                "primary_evidence_grade"
-            ),
-            "candidate_change_count": summary_mapping.get(
-                "candidate_change_count", 0
-            ),
-            "research_readiness": summary_mapping.get(
-                "research_readiness", {}
-            ),
+            "primary_window_kind": summary_mapping.get("primary_window_kind"),
+            "primary_evidence_grade": summary_mapping.get("primary_evidence_grade"),
+            "candidate_change_count": summary_mapping.get("candidate_change_count", 0),
+            "research_readiness": summary_mapping.get("research_readiness", {}),
         },
+        "plan_comparison": compact_plan_comparison(plan_comparison or {}),
         "windows": [compact_window(window) for window in windows],
         "notes": list(notes),
     }
@@ -182,6 +183,36 @@ def compact_span_rows(
         if confidence != default
     ]
     return rows, {"default": default, "overrides": overrides}
+
+
+def compact_plan_comparison(
+    comparison: Mapping[str, object],
+) -> dict[str, object]:
+    """Strip local identifiers while preserving aggregate plan evidence."""
+
+    sanitized = _sanitize_comparison_value(comparison)
+    return dict(sanitized) if isinstance(sanitized, Mapping) else {}
+
+
+def _sanitize_comparison_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _sanitize_comparison_value(item)
+            for key, item in value.items()
+            if not _forbidden_comparison_key(str(key))
+        }
+    if isinstance(value, list | tuple):
+        return [_sanitize_comparison_value(item) for item in value]
+    return value
+
+
+def _forbidden_comparison_key(key: str) -> bool:
+    return (
+        key in _FORBIDDEN_COMPARISON_KEYS
+        or key.endswith("_cycle_id")
+        or key.endswith("_record_id")
+        or key.endswith("_session_id")
+    )
 
 
 def _confidence_default(values: Sequence[object]) -> str | None:
