@@ -4,6 +4,7 @@ import type {
   AllowanceCapacityBoundary,
   AllowanceEvidenceRow,
 } from '../../api/allowanceIntelligenceTypes';
+import { AllowancePlanComparisonCard } from './AllowancePlanComparisonCard';
 import styles from './AllowanceCapacity.module.css';
 
 type AllowanceCapacityChangeTimelineProps = {
@@ -22,41 +23,47 @@ export function AllowanceCapacityChangeTimeline({
   const hasSupportedChanges = boundaries.length > 0;
 
   return (
-    <Surface className={styles.capacityChangePanel}>
-      <div className={styles.capacityChangeHeader}>
-        <div>
-          <p className={styles.capacityChangeEyebrow}>Capacity changes</p>
-          <h2>{timelineTitle(analysis, running, hasSupportedChanges)}</h2>
+    <>
+      <AllowancePlanComparisonCard
+        comparison={analysis?.plan_comparison ?? null}
+        loading={running || analysis?.status === 'missing'}
+      />
+      <Surface className={styles.capacityChangePanel}>
+        <div className={styles.capacityChangeHeader}>
+          <div>
+            <p className={styles.capacityChangeEyebrow}>Capacity changes</p>
+            <h2>{timelineTitle(analysis, running, hasSupportedChanges)}</h2>
+          </div>
+          <StatusBadge tone={hasSupportedChanges ? 'caution' : analysis?.status === 'no_supported_change' ? 'positive' : 'neutral'}>
+            {running ? 'Analyzing' : hasSupportedChanges ? `${boundaries.length} supported` : statusLabel(analysis)}
+          </StatusBadge>
         </div>
-        <StatusBadge tone={hasSupportedChanges ? 'caution' : analysis?.status === 'no_supported_change' ? 'positive' : 'neutral'}>
-          {running ? 'Analyzing' : hasSupportedChanges ? `${boundaries.length} supported` : statusLabel(analysis)}
-        </StatusBadge>
-      </div>
 
-      {hasSupportedChanges ? (
-        <ol
-          className={styles.capacityChangeList}
-          aria-label="Supported capacity changes"
-          data-localization-attributes="aria-label"
-        >
-          {boundaries.map(boundary => (
-            <BoundaryItem
-              key={boundary.boundary_id}
-              analysisId={analysis?.snapshot_id ?? null}
-              boundary={boundary}
-              evidenceId={boundaryEvidenceId(boundary, evidenceRows)}
-            />
-          ))}
-        </ol>
-      ) : (
-        <p className={styles.capacityChangeExplanation}>{timelineExplanation(analysis, running)}</p>
-      )}
+        {hasSupportedChanges ? (
+          <ol
+            className={styles.capacityChangeList}
+            aria-label="Supported capacity changes"
+            data-localization-attributes="aria-label"
+          >
+            {boundaries.map(boundary => (
+              <BoundaryItem
+                key={boundary.boundary_id}
+                analysisId={analysis?.snapshot_id ?? null}
+                boundary={boundary}
+                evidenceId={boundaryEvidenceId(boundary, evidenceRows)}
+              />
+            ))}
+          </ol>
+        ) : (
+          <p className={styles.capacityChangeExplanation}>{timelineExplanation(analysis, running)}</p>
+        )}
 
-      <dl className={styles.capacityChangeMeta}>
-        <div><dt>Eligible reset windows</dt><dd>{analysis?.eligible_cycle_count ?? '—'}</dd></div>
-        <div><dt>Last analyzed</dt><dd>{analysis?.generated_at ? formatDateTime(analysis.generated_at) : running ? 'In progress' : 'Not yet'}</dd></div>
-      </dl>
-    </Surface>
+        <dl className={styles.capacityChangeMeta}>
+          <div><dt>Eligible reset windows</dt><dd>{analysis?.eligible_cycle_count ?? '—'}</dd></div>
+          <div><dt>Last analyzed</dt><dd>{analysis?.generated_at ? formatDateTime(analysis.generated_at) : running ? 'In progress' : 'Not yet'}</dd></div>
+        </dl>
+      </Surface>
+    </>
   );
 }
 
