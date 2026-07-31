@@ -1,5 +1,7 @@
 // Versioned allowance-intelligence contracts shared by the live dashboard client.
 
+import type { AllowancePlanComparison } from './allowancePlanComparison';
+
 export type AllowanceWindowKindV2 = 'weekly' | 'five_hour';
 type AllowanceFreshness = 'fresh' | 'aging' | 'stale';
 export type AllowanceDataState = AllowanceFreshness | 'empty' | 'partial';
@@ -269,6 +271,7 @@ export type AllowanceAnalysisPayload = {
     familywise_alpha: number;
     min_cycles_per_side?: number;
   };
+  plan_comparison: AllowancePlanComparison | null;
   quality?: AllowanceDedupeQuality;
   detector_version?: string;
   selection_correction?: string;
