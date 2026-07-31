@@ -131,7 +131,7 @@ def test_compact_export_is_substantially_smaller_than_verbose_span_objects() -> 
     assert compact_size <= verbose_size * 0.25
 
 
-def test_default_export_is_compact_complete_and_strict(tmp_path: Path) -> None:
+def test_compact_export_is_complete_and_strict(tmp_path: Path) -> None:
     db_path = tmp_path / "usage.sqlite3"
     upsert_usage_events(
         [
@@ -163,7 +163,10 @@ def test_default_export_is_compact_complete_and_strict(tmp_path: Path) -> None:
         db_path=db_path,
     )
 
-    payload = build_allowance_export_report(db_path=db_path).payload
+    payload = build_allowance_export_report(
+        db_path=db_path,
+        export_format="compact",
+    ).payload
     encoded = json.dumps(payload)
 
     assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v2"
