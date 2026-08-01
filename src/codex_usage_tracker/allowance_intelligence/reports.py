@@ -141,7 +141,7 @@ def build_allowance_export_report(
     include_archived: bool = False,
     window_kind: str | None = None,
     limit: int | None = None,
-    export_format: str = "verbose",
+    export_format: str = "compact",
     from_plan: str | None = None,
     to_plan: str | None = None,
 ) -> AllowanceReport:
@@ -199,12 +199,14 @@ def build_allowance_export_report(
         span_count=span_count,
         truncated=selection.truncated,
     )
-    plan_comparison = _plan_comparison_for_export(
-        db_path,
-        include_archived=include_archived,
-        from_plan=from_plan,
-        to_plan=to_plan,
-    )
+    plan_comparison: dict[str, Any] | None = None
+    if from_plan is not None and to_plan is not None:
+        plan_comparison = _plan_comparison_for_export(
+            db_path,
+            include_archived=include_archived,
+            from_plan=from_plan,
+            to_plan=to_plan,
+        )
     return AllowanceReport(
         build_compact_allowance_export(
             diagnostics,
