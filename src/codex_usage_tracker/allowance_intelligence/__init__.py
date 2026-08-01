@@ -10,6 +10,7 @@ from codex_usage_tracker.allowance_intelligence.model import (
 
 __all__ = (
     "ALLOWANCE_EXPORT_COMPACT_SCHEMA",
+    "ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA",
     "ALLOWANCE_EXPORT_FORMATS",
     "ALLOWANCE_EXPORT_SCHEMA",
     "ALLOWANCE_EXPORT_VERBOSE_SCHEMA",
@@ -33,6 +34,7 @@ def __getattr__(name: str) -> Any:
 
     if name in {
         "ALLOWANCE_EXPORT_COMPACT_SCHEMA",
+        "ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA",
         "ALLOWANCE_EXPORT_FORMATS",
         "ALLOWANCE_EXPORT_VERBOSE_SCHEMA",
     }:
