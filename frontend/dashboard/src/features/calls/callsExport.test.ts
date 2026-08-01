@@ -71,6 +71,23 @@ describe('compact calls export', () => {
     expect(encoded).not.toContain('secret.jsonl');
   });
 
+  it('does not claim completeness for a bounded loaded snapshot', () => {
+    const payload = buildCompactCallsExport([call({})], {
+      ...scope,
+      source: 'loaded-snapshot',
+      matchedCallCount: 1,
+      completeResultSet: true,
+    });
+
+    expect(payload.scope).toMatchObject({
+      source: 'loaded-snapshot',
+      matched_call_count: null,
+      exported_call_count: 1,
+      complete_result_set: false,
+      truncated: null,
+    });
+  });
+
   it('writes a concise flat CSV without forensic columns', () => {
     const csv = buildCompactCallsCsv([call({})]);
     const [header, row] = csv.split('\n');
