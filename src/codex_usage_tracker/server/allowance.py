@@ -211,7 +211,7 @@ def allowance_export_payload(
         include_archived=_include_archived(params, include_archived_default),
         window_kind=first_query_value(params.get("window_kind")),
         limit=_parse_export_limit(first_query_value(params.get("limit"))),
-        export_format=first_query_value(params.get("format")) or "compact",
+        export_format=first_query_value(params.get("format")) or "verbose",
         from_plan=first_query_value(params.get("from_plan")),
         to_plan=first_query_value(params.get("to_plan")),
     )
