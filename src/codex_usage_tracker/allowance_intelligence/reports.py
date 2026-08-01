@@ -16,6 +16,7 @@ from codex_usage_tracker.allowance_intelligence.export_payload import (
     build_compact_allowance_export,
     build_compact_allowance_export_v2,
     build_verbose_allowance_export,
+    compact_plan_comparison,
     normalize_time_origin,
 )
 from codex_usage_tracker.allowance_intelligence.model import (
@@ -24,6 +25,9 @@ from codex_usage_tracker.allowance_intelligence.model import (
 )
 from codex_usage_tracker.allowance_intelligence.plan_comparison import (
     build_plan_meter_comparison,
+)
+from codex_usage_tracker.allowance_intelligence.rate_change_detection import (
+    infer_timestamped_rate_change,
 )
 from codex_usage_tracker.core.paths import (
     DEFAULT_ALLOWANCE_PATH,
@@ -232,19 +236,25 @@ def build_allowance_export_report(
                 notes=notes,
             )
         )
-    return AllowanceReport(
-        build_compact_allowance_export(
-            diagnostics,
-            generated_at=generated_at,
-            include_archived=include_archived,
-            window_kind=window_kind,
-            requested_limit=limit,
-            coverage=coverage,
-            time_origin=normalize_time_origin(selected_start_at),
-            plan_comparison=plan_comparison,
-            notes=notes,
-        )
+    pricing_change = _pricing_change_for_export(
+        db_path,
+        allowance_path=allowance_path,
+        rate_card_path=rate_card_path,
+        include_archived=include_archived,
     )
+    payload = build_compact_allowance_export(
+        diagnostics,
+        generated_at=generated_at,
+        include_archived=include_archived,
+        window_kind=window_kind,
+        requested_limit=limit,
+        coverage=coverage,
+        time_origin=normalize_time_origin(selected_start_at),
+        plan_comparison=plan_comparison,
+        notes=notes,
+    )
+    payload["pricing_change"] = compact_plan_comparison(pricing_change)
+    return AllowanceReport(payload)
 
 
 def _plan_comparison_for_export(
@@ -268,6 +278,33 @@ def _plan_comparison_for_export(
             cohort_key="codex",
             from_plan=from_plan,
             to_plan=to_plan,
+        )
+
+
+def _pricing_change_for_export(
+    db_path: Path,
+    *,
+    allowance_path: Path,
+    rate_card_path: Path,
+    include_archived: bool,
+) -> dict[str, Any]:
+    with connect(db_path) as connection:
+        materialize_allowance_intelligence(connection)
+        source = connection.execute(
+            "SELECT source_revision FROM allowance_source_state WHERE state_id = 1"
+        ).fetchone()
+        source_revision = str(source[0]) if source else "missing"
+        config = load_allowance_config(
+            allowance_path,
+            rate_card_path=rate_card_path,
+        )
+        return infer_timestamped_rate_change(
+            connection,
+            source_revision=source_revision,
+            archive_scope="all" if include_archived else "active",
+            window_kind="weekly",
+            cohort_key="codex",
+            config=config,
         )
 
 
