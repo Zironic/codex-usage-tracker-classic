@@ -97,7 +97,10 @@ def parse_openai_codex_rate_card_html(html: str) -> PublishedCodexRateCard:
                 f"Codex rate-card row has incomplete numeric values: {display_name}"
             )
         input_rate, cached_rate, output_rate = values
-        assert input_rate is not None and cached_rate is not None and output_rate is not None
+        if input_rate is None or cached_rate is None or output_rate is None:
+            raise CodexRateCardParseError(
+                f"Codex rate-card row failed numeric narrowing: {display_name}"
+            )
         credit_rates[model] = {
             "input_per_million": input_rate,
             "cached_input_per_million": cached_rate,
