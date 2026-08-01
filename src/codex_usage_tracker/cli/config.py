@@ -101,7 +101,7 @@ def run_init_allowance(args: argparse.Namespace) -> int:
         output=output,
         schema="codex-usage-tracker-init-allowance-v1",
         path_key="allowance_path",
-        message=f"Wrote allowance template to {output}",
+        message=f"Wrote local allowance template to {output}",
     )
 
 
@@ -133,11 +133,20 @@ def run_parse_allowance(args: argparse.Namespace) -> int:
 def run_update_rate_card(args: argparse.Namespace) -> int:
     """Refresh the local Codex credit rate card."""
     source_file = args.source_file
-    result = update_rate_card(
-        args.output or args.rate_card,
-        source_file=source_file,
-        source_url=None if source_file is not None else CODEX_RATE_CARD_URL,
-    )
+    output = args.output or args.rate_card
+    fallback_reason: str | None = None
+    try:
+        result = update_rate_card(
+            output,
+            source_file=source_file,
+            source_url=None if source_file is not None else CODEX_RATE_CARD_URL,
+        )
+    except RuntimeError as exc:
+        if source_file is not None:
+            raise
+        fallback_reason = str(exc)
+        result = update_rate_card(output)
+
     if args.as_json:
         print_json(
             {
@@ -152,11 +161,24 @@ def run_update_rate_card(args: argparse.Namespace) -> int:
                 "revision_changed": result.revision_changed,
                 "effective_at": result.effective_at,
                 "effective_at_precision": result.effective_at_precision,
+                "fallback_reason": fallback_reason,
                 "backup_path": path_payload(result.backup_path) if result.backup_path else None,
             }
         )
         return 0
-    source_label = "live OpenAI page" if result.live_fetch else "supplied snapshot"
+
+    if fallback_reason is not None:
+        print(
+            "Warning: live OpenAI rate-card fetch failed; wrote the bundled snapshot instead. "
+            f"Reason: {fallback_reason}",
+            file=sys.stderr,
+        )
+    if result.live_fetch:
+        source_label = "live OpenAI page"
+    elif source_file is not None:
+        source_label = "supplied snapshot"
+    else:
+        source_label = "bundled fallback snapshot"
     print(
         f"Wrote {result.model_count} Codex credit rates, "
         f"{result.unpriced_model_count} explicitly unpriced models, and "
