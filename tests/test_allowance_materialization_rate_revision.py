@@ -34,7 +34,6 @@ def test_materialization_reprices_unchanged_observations_when_rate_card_changes(
             model="gpt-5.6-luna",
             input_tokens=1_000_000,
             cached_input_tokens=0,
-            uncached_input_tokens=1_000_000,
             output_tokens=0,
             total_tokens=1_000_000,
         ),
@@ -54,7 +53,6 @@ def test_materialization_reprices_unchanged_observations_when_rate_card_changes(
             model="gpt-5.6-luna",
             input_tokens=1_000_000,
             cached_input_tokens=0,
-            uncached_input_tokens=1_000_000,
             output_tokens=0,
             total_tokens=1_000_000,
         ),
@@ -128,7 +126,6 @@ def test_materialized_weekly_intervals_infer_timestamped_luna_rate_change(
                 model="gpt-5.6-luna",
                 input_tokens=input_tokens,
                 cached_input_tokens=0,
-                uncached_input_tokens=input_tokens,
                 output_tokens=0,
                 total_tokens=input_tokens,
             )
