@@ -17,10 +17,19 @@ from codex_usage_tracker.allowance_intelligence.plan_comparison import (
     PLAN_COMPARISON_VERSION,
     build_plan_meter_comparison,
 )
-from codex_usage_tracker.pricing.allowance_config import load_allowance_config
+from codex_usage_tracker.allowance_intelligence.rate_change_detection import (
+    RATE_CHANGE_DETECTOR_VERSION,
+    infer_timestamped_rate_change,
+)
+from codex_usage_tracker.pricing.allowance_config import (
+    UsageAllowanceConfig,
+    load_allowance_config,
+)
 
 ANALYSIS_SCHEMA = "codex-usage-tracker-allowance-analysis-v2"
-ANALYSIS_MODEL_VERSION = f"{MULTI_DETECTOR_VERSION}+{PLAN_COMPARISON_VERSION}"
+ANALYSIS_MODEL_VERSION = (
+    f"{MULTI_DETECTOR_VERSION}+{PLAN_COMPARISON_VERSION}+{RATE_CHANGE_DETECTOR_VERSION}"
+)
 
 
 def build_allowance_analysis(
@@ -78,6 +87,15 @@ def build_allowance_analysis(
         bootstrap_samples=int(resolved["permutation_count"]),
         permutation_samples=int(resolved["permutation_count"]),
     )
+    allowance_config = load_allowance_config()
+    pricing_change = infer_timestamped_rate_change(
+        connection,
+        source_revision=source_revision,
+        archive_scope=archive_scope,
+        window_kind=window_kind,
+        cohort_key=cohort_key,
+        config=allowance_config,
+    )
     payload = {
         "schema": ANALYSIS_SCHEMA,
         "snapshot_id": snapshot_id,
@@ -93,6 +111,7 @@ def build_allowance_analysis(
         "parameters": resolved,
         "quality": _usage_quality(connection),
         "plan_comparison": plan_comparison,
+        "pricing_change": pricing_change,
         **detected,
     }
     cache_model_version = (
@@ -246,13 +265,36 @@ def _normalized_time(value: object) -> str:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00")).isoformat()
 
 
-def _rate_card_revision() -> str:
-    config = load_allowance_config()
+def _rate_card_revision(config: UsageAllowanceConfig | None = None) -> str:
+    resolved = config or load_allowance_config()
     encoded = json.dumps(
         {
-            "credit_rates": config.credit_rates,
-            "aliases": config.aliases,
-            "rate_metadata": config.rate_metadata,
+            "source": resolved.source,
+            "credit_rates": resolved.credit_rates,
+            "aliases": resolved.aliases,
+            "rate_metadata": resolved.rate_metadata,
+            "local_rate_models": sorted(resolved.local_rate_models),
+            "fast_multipliers": {
+                family: {
+                    "multiplier": rate.multiplier,
+                    "source_name": rate.source_name,
+                    "source_url": rate.source_url,
+                    "fetched_at": rate.fetched_at,
+                    "confidence": rate.confidence,
+                }
+                for family, rate in sorted(resolved.fast_multipliers.items())
+            },
+            "rate_revisions": [
+                {
+                    "revision_id": revision.revision_id,
+                    "effective_at": revision.effective_at_text,
+                    "effective_at_precision": revision.effective_at_precision,
+                    "credit_rates": revision.credit_rates,
+                    "rate_metadata": revision.rate_metadata,
+                    "source": revision.source,
+                }
+                for revision in resolved.rate_revisions
+            ],
         },
         sort_keys=True,
         separators=(",", ":"),
