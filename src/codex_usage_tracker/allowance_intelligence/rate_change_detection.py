@@ -16,7 +16,7 @@ from codex_usage_tracker.pricing.allowance_rate_history import CreditRateRevisio
 from codex_usage_tracker.pricing.allowance_usage import estimate_standard_usage_credits
 from codex_usage_tracker.pricing.fast_tier import credit_multiplier_for_row
 
-RATE_CHANGE_DETECTOR_VERSION = "known-rate-hypothesis-interval-v1"
+RATE_CHANGE_DETECTOR_VERSION = "known-rate-hypothesis-interval-v2"
 _MIN_INTERVALS_PER_SIDE = 3
 _PRIMARY_PRIOR_RADIUS = timedelta(hours=72)
 _ANALYSIS_RADIUS = timedelta(days=7)
@@ -401,10 +401,8 @@ def _candidate_fits(
     primary: list[dict[str, Any]] = []
     for split in range(_MIN_INTERVALS_PER_SIDE, len(rows) - _MIN_INTERVALS_PER_SIDE + 1):
         lower = rows[split - 1].end_at
-        upper = rows[split].start_at
-        if upper < lower:
-            upper = rows[split].end_at
-        estimate = lower + ((upper - lower) / 2)
+        upper = max(lower, rows[split].end_at)
+        estimate = prior if lower <= prior <= upper else lower + ((upper - lower) / 2)
         candidate = {
             "split_index": split,
             "lower_bound": lower,
