@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from typing import Any
 from urllib.error import URLError
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -255,10 +255,8 @@ class _RateCardHTMLParser(HTMLParser):
         elif tag == "script" and self._json_parts is not None:
             text = "".join(self._json_parts).strip()
             if text:
-                try:
+                with suppress(json.JSONDecodeError):
                     self.structured_data.append(json.loads(text))
-                except json.JSONDecodeError:
-                    pass
             self._json_parts = None
 
     def handle_data(self, data: str) -> None:
