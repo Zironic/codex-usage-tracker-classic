@@ -11,6 +11,7 @@ import type { ContextRuntime } from '../../api/types';
 import type { HistoryScope } from '../../data/dataScope';
 import { Button, SegmentedControl, StatusBadge, Surface } from '../../design';
 import { ModelStatisticsTable } from './ModelStatisticsTable';
+import { StatisticsAdvancedPanels } from './StatisticsAdvancedPanels';
 import styles from './StatisticsPage.module.css';
 
 const rangeOptions = [
@@ -21,7 +22,7 @@ const rangeOptions = [
   { value: 365, label: '365 days' },
 ] as const;
 type ChartGranularity = 'day' | 'hour';
-type ChartMetric = 'credits' | 'calls';
+type ChartMetric = 'credits' | 'calls' | 'active';
 
 export function StatisticsPage({
   contextRuntime,
@@ -42,9 +43,15 @@ export function StatisticsPage({
   const [model, setModel] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [sessionGap, setSessionGap] = useState(30);
+  const [activeGapCap, setActiveGapCap] = useState(5);
+  const [comparisonAt, setComparisonAt] = useState('');
   const [granularity, setGranularity] = useState<ChartGranularity>('day');
   const [metric, setMetric] = useState<ChartMetric>('credits');
   const range = useMemo(() => dateRange(days), [days]);
+  const comparisonTimestamp = useMemo(
+    () => comparisonIso(comparisonAt, range.since, range.until),
+    [comparisonAt, range.since, range.until],
+  );
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const hourlyRangeAvailable = days !== 'all' && days <= 30;
 
@@ -62,6 +69,8 @@ export function StatisticsPage({
       days,
       model,
       sessionGap,
+      activeGapCap,
+      comparisonTimestamp,
       timezone,
     ],
     queryFn: ({ signal }) => loadUsageStatistics(contextRuntime, {
@@ -70,6 +79,8 @@ export function StatisticsPage({
       history: historyScope,
       ...(model ? { model } : {}),
       session_gap_minutes: sessionGap,
+      active_gap_cap_minutes: activeGapCap,
+      ...(comparisonTimestamp ? { comparison_at: comparisonTimestamp } : {}),
       top_limit: 10,
       all_time: days === 'all',
     }, signal),
@@ -97,7 +108,10 @@ export function StatisticsPage({
         <div>
           <p className={styles.eyebrow}>Usage statistics</p>
           <h1>Statistics</h1>
-          <p>Credit distributions, time-normalized rates, model mix, sessions, and concentration.</p>
+          <p>
+            Active time, turns, plan and rate cohorts, model mix, subagents, projects,
+            threads, and credit distributions.
+          </p>
         </div>
         <Button variant="primary" onClick={onRefresh} disabled={refreshing}>
           <RefreshCw size={16} /> {refreshing ? 'Refreshing…' : 'Refresh data'}
@@ -131,6 +145,30 @@ export function StatisticsPage({
             ))}
           </select>
         </label>
+        <label>Active-gap cap
+          <select
+            value={activeGapCap}
+            onChange={event => setActiveGapCap(Number(event.target.value))}
+          >
+            {[0, 1, 2, 5, 10, 15].map(value => (
+              <option key={value} value={value}>
+                {value === 0 ? 'Call duration only' : `${value} minutes`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>Before / after split
+          <input
+            type="datetime-local"
+            value={comparisonAt}
+            min={localDateTime(range.since)}
+            max={localDateTime(range.until)}
+            onChange={event => setComparisonAt(event.target.value)}
+          />
+        </label>
+        {comparisonAt ? (
+          <Button variant="ghost" onClick={() => setComparisonAt('')}>Clear split</Button>
+        ) : null}
         {model ? (
           <Button variant="ghost" onClick={() => setModel('')}>Clear model filter</Button>
         ) : null}
@@ -143,6 +181,11 @@ export function StatisticsPage({
         </StatusBadge>
       </Surface>
 
+      {comparisonAt && !comparisonTimestamp ? (
+        <Surface>
+          <p>The comparison timestamp must fall inside the selected range.</p>
+        </Surface>
+      ) : null}
       {query.isError ? (
         <Surface>
           <p>{query.error instanceof Error ? query.error.message : 'Statistics unavailable.'}</p>
@@ -211,22 +254,13 @@ function StatisticsContent({
       <section className={styles.cards}>
         <Metric label="Known credits" value={number(headline.known_usage_credits)} />
         <Metric label="Calls" value={integer(headline.calls)} />
-        <Metric
-          label="Mean / priced call"
-          value={number(headline.mean_credits_per_priced_call)}
-        />
-        <Metric
-          label="Median / priced call"
-          value={number(headline.median_credits_per_priced_call)}
-        />
-        <Metric
-          label="Credits / calendar day"
-          value={number(headline.credits_per_calendar_day)}
-        />
-        <Metric
-          label="Credits / active hour"
-          value={number(headline.credits_per_active_hour)}
-        />
+        <Metric label="Estimated active hours" value={number(headline.estimated_active_hours)} />
+        <Metric label="Distinct turns" value={integer(headline.distinct_turns)} />
+        <Metric label="Credits / active hour" value={number(headline.credits_per_active_hour)} />
+        <Metric label="Calls / active hour" value={number(headline.calls_per_active_hour)} />
+        <Metric label="Credits / turn" value={number(headline.credits_per_turn)} />
+        <Metric label="Subagent calls / turn" value={number(headline.subagent_calls_per_turn)} />
+        <Metric label="Median / priced call" value={number(headline.median_credits_per_priced_call)} />
       </section>
 
       <section className={styles.grid}>
@@ -254,12 +288,21 @@ function StatisticsContent({
           </p>
         </Surface>
         <Surface>
-          <h2>Concentration</h2>
+          <h2>Active-time semantics</h2>
           <dl className={styles.definitionList}>
-            {Object.entries(payload.concentration ?? {}).map(([key, value]) => (
+            {[
+              'measured_call_duration_seconds',
+              'capped_inter_call_gap_seconds',
+              'median_session_duration_seconds',
+              'p75_session_duration_seconds',
+              'p90_session_duration_seconds',
+              'calls_per_turn',
+              'credits_per_turn',
+              'subagent_calls_per_turn',
+            ].map(key => (
               <div key={key}>
                 <dt>{label(key)}</dt>
-                <dd>{percent(value)}</dd>
+                <dd>{number(payload.activity?.[key as keyof typeof payload.activity])}</dd>
               </div>
             ))}
           </dl>
@@ -291,6 +334,7 @@ function StatisticsContent({
               options={[
                 { label: 'Credits', value: 'credits' },
                 { label: 'Calls', value: 'calls' },
+                { label: 'Active minutes', value: 'active' },
               ]}
             />
           </div>
@@ -303,7 +347,7 @@ function StatisticsContent({
         <div
           className={`${styles.bars} ${activeGranularity === 'hour' ? styles.hourlyBars : ''}`}
           role="img"
-          aria-label={`${activeGranularity === 'hour' ? 'Hourly' : 'Daily'} ${metric === 'credits' ? 'credit' : 'call'} usage chart`}
+          aria-label={`${activeGranularity === 'hour' ? 'Hourly' : 'Daily'} ${metricLabel(metric)} chart`}
         >
           {points.map((point, index) => {
             const value = chartValue(point, metric);
@@ -330,15 +374,18 @@ function StatisticsContent({
         />
       </Surface>
 
+      <StatisticsAdvancedPanels payload={payload} />
+
       <section className={styles.grid}>
         <Surface>
           <h2>Activity sessions</h2>
           <p>{integer(payload.sessions?.count)} sessions inferred using the selected idle gap.</p>
           {(payload.sessions?.rows ?? []).slice(0, 5).map(row => (
             <div className={styles.listRow} key={String(row.start_at)}>
-              <span>{new Date(String(row.start_at)).toLocaleString()}</span>
+              <span>{new Date(row.start_at).toLocaleString()}</span>
               <strong>
-                {number(row.known_credits)} credits · {integer(row.calls)} calls
+                {number(row.active_minutes)} active min · {integer(row.turns)} turns ·{' '}
+                {integer(row.calls)} calls
               </strong>
             </div>
           ))}
@@ -369,7 +416,9 @@ function StatisticsContent({
             key={row.record_id}
             onClick={() => onOpen(row.record_id)}
           >
-            <span>{new Date(row.event_timestamp).toLocaleString()} · {row.model}</span>
+            <span>
+              {new Date(row.event_timestamp).toLocaleString()} · {row.model} · {row.project}
+            </span>
             <strong>{number(row.usage_credits)} credits</strong>
           </button>
         ))}
@@ -403,8 +452,26 @@ function dateRange(days: number | 'all') {
   return { since: since.toISOString(), until: until.toISOString() };
 }
 
+function comparisonIso(value: string, since: string, until: string): string | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  const lower = Date.parse(since);
+  const upper = Date.parse(until);
+  if (!Number.isFinite(timestamp) || timestamp <= lower || timestamp >= upper) return null;
+  return new Date(timestamp).toISOString();
+}
+
+function localDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
 function chartValue(point: StatisticsSeriesPoint, metric: ChartMetric): number {
-  return metric === 'credits' ? point.known_credits : point.calls;
+  if (metric === 'credits') return point.known_credits;
+  if (metric === 'active') return point.active_minutes;
+  return point.calls;
 }
 
 function pointTitle(
@@ -423,8 +490,16 @@ function pointTitle(
     : point.period_start;
   const value = metric === 'credits'
     ? `${number(point.known_credits)} credits`
-    : `${integer(point.calls)} calls`;
+    : metric === 'active'
+      ? `${number(point.active_minutes)} active minutes`
+      : `${integer(point.calls)} calls`;
   return `${period}: ${value}`;
+}
+
+function metricLabel(metric: ChartMetric): string {
+  if (metric === 'credits') return 'credit usage';
+  if (metric === 'active') return 'active minutes';
+  return 'call usage';
 }
 
 function axisLabel(
