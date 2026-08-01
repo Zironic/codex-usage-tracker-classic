@@ -7,6 +7,11 @@ import {
   type CallsExportScope,
 } from './callsExport';
 
+type ResearchCallRow = CallRow & {
+  plan: string;
+  rateRevision: string;
+};
+
 const scope: CallsExportScope = {
   source: 'live-api',
   filters: { model: 'gpt-5.6-luna', include_archived: false },
@@ -19,7 +24,7 @@ const scope: CallsExportScope = {
 };
 
 describe('compact calls export', () => {
-  it('dictionary-encodes repeated strings and timestamps', () => {
+  it('dictionary-encodes repeated strings, research dimensions, and timestamps', () => {
     const payload = buildCompactCallsExport(
       [
         call({
@@ -50,6 +55,9 @@ describe('compact calls export', () => {
       threads: ['Tracker work'],
       projects: ['codex-usage-tracker'],
       models: ['gpt-5.6-luna'],
+      plans: ['prolite'],
+      rate_revisions: ['2026-07-14'],
+      subagent_types: ['worker'],
       flags: ['low-cache'],
     });
     const rows = payload.rows as unknown[][];
@@ -57,16 +65,20 @@ describe('compact calls export', () => {
     expect(rows[1][0]).toBe(7);
     expect(rows[0][1]).toBe(0);
     expect(rows[1][1]).toBe(0);
-    expect(rows[0][11]).toBe(12.345679);
-    expect(rows[0][18]).toEqual([0]);
+    expect(rows[0][8]).toBe(false);
+    expect(rows[0][9]).toBe(0);
+    expect(rows[1][9]).toBe(0);
+    expect(rows[0][16]).toBe(12.345679);
+    expect(rows[0][23]).toEqual([0]);
   });
 
-  it('omits local record, session, source-file, and cwd identifiers', () => {
+  it('omits local record, session, turn, source-file, and cwd identifiers', () => {
     const payload = buildCompactCallsExport([call({})], scope);
     const encoded = JSON.stringify(payload);
 
     expect(encoded).not.toContain('secret-record');
     expect(encoded).not.toContain('secret-session');
+    expect(encoded).not.toContain('secret-turn');
     expect(encoded).not.toContain('C:/private/project');
     expect(encoded).not.toContain('secret.jsonl');
   });
@@ -88,20 +100,24 @@ describe('compact calls export', () => {
     });
   });
 
-  it('writes a concise flat CSV without forensic columns', () => {
+  it('writes a concise flat CSV with opaque turn groups', () => {
     const csv = buildCompactCallsCsv([call({})]);
     const [header, row] = csv.split('\n');
 
-    expect(header.split(',')).toHaveLength(19);
-    expect(header).toContain('usage_credits');
-    expect(header).toContain('previous_gap_seconds');
+    expect(header.split(',')).toHaveLength(24);
+    expect(header).toContain('plan');
+    expect(header).toContain('rate_revision');
+    expect(header).toContain('turn_group');
+    expect(header).toContain('subagent_type');
     expect(header).not.toContain('session_id');
+    expect(header).not.toContain('turn_id');
     expect(header).not.toContain('source_file');
     expect(row).toContain('gpt-5.6-luna');
+    expect(row).not.toContain('secret-turn');
   });
 });
 
-function call(overrides: Partial<CallRow>): CallRow {
+function call(overrides: Partial<ResearchCallRow>): ResearchCallRow {
   return {
     id: 'secret-record',
     rawTime: '2026-08-01T08:00:00Z',
@@ -111,6 +127,8 @@ function call(overrides: Partial<CallRow>): CallRow {
     thread: 'Tracker work',
     model: 'gpt-5.6-luna',
     effort: 'medium',
+    plan: 'prolite',
+    rateRevision: '2026-07-14',
     input: 1000,
     output: 100,
     reasoningOutput: 50,
@@ -162,8 +180,8 @@ function call(overrides: Partial<CallRow>): CallRow {
     parentSessionUpdatedAt: '',
     parentThread: '',
     threadAttachmentLabel: '',
-    threadSource: 'user',
-    subagentType: '',
+    threadSource: 'subagent',
+    subagentType: 'worker',
     agentRole: '',
     agentNickname: '',
     project: 'codex-usage-tracker',
