@@ -89,6 +89,8 @@ export function buildCompactCallsExport(
     ];
   });
   const fetchedAt = uniqueStrings(rows.map(row => row.usageCreditFetchedAt));
+  const liveResult = scope.source === 'live-api';
+  const completeResultSet = liveResult && scope.completeResultSet;
 
   return {
     schema: 'codex-usage-tracker-calls-export-v2',
@@ -101,10 +103,10 @@ export function buildCompactCallsExport(
       sort: scope.sort,
       direction: scope.direction,
       include_archived: scope.includeArchived,
-      matched_call_count: scope.matchedCallCount,
+      matched_call_count: liveResult ? scope.matchedCallCount : null,
       exported_call_count: rows.length,
-      complete_result_set: scope.completeResultSet,
-      truncated: !scope.completeResultSet,
+      complete_result_set: completeResultSet,
+      truncated: liveResult ? !completeResultSet : null,
       source_revision: scope.sourceRevision || null,
     },
     pricing_basis: {
