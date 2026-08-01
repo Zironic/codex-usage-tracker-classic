@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import fields
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import BinaryIO
 
 from codex_usage_tracker.application.statistics import get_usage_statistics
 from codex_usage_tracker.application.statistics_models import StatisticsRequest
