@@ -163,10 +163,7 @@ def test_compact_export_is_complete_and_strict(tmp_path: Path) -> None:
         db_path=db_path,
     )
 
-    payload = build_allowance_export_report(
-        db_path=db_path,
-        export_format="compact",
-    ).payload
+    payload = build_allowance_export_report(db_path=db_path).payload
     encoded = json.dumps(payload)
 
     assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v2"
@@ -179,9 +176,42 @@ def test_compact_export_is_complete_and_strict(tmp_path: Path) -> None:
         "span_count": 1,
         "truncated": False,
     }
+    assert "plan_comparison" not in payload
     assert "private-record" not in encoded
     assert "private-session" not in encoded
     assert "thread:private" not in encoded
+
+
+def test_compact_export_includes_requested_plan_comparison() -> None:
+    diagnostics = {
+        "summary": {
+            "primary_window_kind": "weekly",
+            "primary_evidence_grade": "no_change_detected",
+            "candidate_change_count": 0,
+            "research_readiness": {},
+        },
+        "windows": [],
+    }
+    payload = build_compact_allowance_export(
+        diagnostics,
+        generated_at="2026-07-31T00:00:00Z",
+        include_archived=False,
+        window_kind="weekly",
+        requested_limit=None,
+        coverage=AllowanceExportCoverage(
+            matched_observation_count=0,
+            exported_observation_count=0,
+            start_date=None,
+            end_date=None,
+            window_count=0,
+            span_count=0,
+            truncated=False,
+        ),
+        notes=[],
+        plan_comparison={"status": "ready", "sample_count": 4},
+    )
+
+    assert payload["plan_comparison"] == {"status": "ready", "sample_count": 4}
 
 
 def test_verbose_export_remains_available(tmp_path: Path) -> None:
