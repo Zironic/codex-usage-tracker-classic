@@ -58,7 +58,7 @@ def fetch_openai_codex_rate_card_html(
     )
     try:
         # The source scheme is restricted to HTTPS above.
-        with urlopen(request, timeout=20) as response:
+        with urlopen(request, timeout=20) as response:  # nosec B310
             content_type = response.headers.get_content_charset() or "utf-8"
             return response.read().decode(content_type)
     except URLError as exc:
