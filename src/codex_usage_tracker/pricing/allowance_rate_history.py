@@ -128,21 +128,6 @@ def revision_for_timestamp(
     return selected
 
 
-def revision_signature(revisions: Sequence[CreditRateRevision]) -> list[dict[str, object]]:
-    """Return a stable JSON-ready representation for cache invalidation."""
-
-    return [
-        {
-            "revision_id": revision.revision_id,
-            "effective_at": revision.effective_at_text,
-            "effective_at_precision": revision.effective_at_precision,
-            "credit_rates": revision.credit_rates,
-            "rate_metadata": revision.rate_metadata,
-        }
-        for revision in revisions
-    ]
-
-
 def _parse_effective_at(value: str | None, *, index: int) -> datetime | None:
     if value is None:
         return None
