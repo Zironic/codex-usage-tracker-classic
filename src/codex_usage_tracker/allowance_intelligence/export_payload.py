@@ -62,7 +62,7 @@ def build_compact_allowance_export(
     summary = diagnostics.get("summary")
     summary_mapping = summary if isinstance(summary, Mapping) else {}
     windows = _mapping_rows(diagnostics.get("windows"))
-    return {
+    payload: dict[str, object] = {
         "schema": ALLOWANCE_EXPORT_COMPACT_SCHEMA,
         "generated_at": generated_at,
         "privacy_mode": "strict",
@@ -99,10 +99,12 @@ def build_compact_allowance_export(
             "candidate_change_count": summary_mapping.get("candidate_change_count", 0),
             "research_readiness": summary_mapping.get("research_readiness", {}),
         },
-        "plan_comparison": compact_plan_comparison(plan_comparison or {}),
         "windows": [compact_window(window) for window in windows],
         "notes": list(notes),
     }
+    if plan_comparison:
+        payload["plan_comparison"] = compact_plan_comparison(plan_comparison)
+    return payload
 
 
 def build_verbose_allowance_export(
