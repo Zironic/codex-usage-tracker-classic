@@ -43,10 +43,10 @@ describe('allowance API', () => {
     expect(new Headers(init?.headers).get('X-Codex-Usage-Token')).toBe(runtime.apiToken);
   });
 
-  it('defaults evidence export to compact v2 with an explicit unbounded limit', async () => {
+  it('defaults evidence export to minute-resolution compact v3', async () => {
     const diagnostics = { schema: 'codex-usage-tracker-allowance-diagnostics-v1' };
     const exported = {
-      schema: 'codex-usage-tracker-allowance-evidence-export-v2',
+      schema: 'codex-usage-tracker-allowance-evidence-export-v3',
       privacy_mode: 'strict',
     };
     const fetchMock = vi.spyOn(globalThis, 'fetch')
@@ -63,6 +63,22 @@ describe('allowance API', () => {
     expect(exportUrl.searchParams.get('limit')).toBe('None');
     expect(exportUrl.searchParams.get('format')).toBe('compact');
     expect(exportUrl.searchParams.has('privacy_mode')).toBe(false);
+  });
+
+  it('can request the date-only compact v2 export', async () => {
+    const exported = {
+      schema: 'codex-usage-tracker-allowance-evidence-export-v2',
+      privacy_mode: 'strict',
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(exported));
+
+    await expect(loadAllowanceEvidenceExport(runtime, {
+      format: 'compact-v2',
+      limit: null,
+    })).resolves.toEqual(exported);
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost');
+    expect(url.searchParams.get('format')).toBe('compact-v2');
   });
 
   it('can request the historical verbose v1 export', async () => {
@@ -82,7 +98,7 @@ describe('allowance API', () => {
   });
 
   it('rejects incompatible schemas and file mode before the payload is used', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ schema: 'future-v3' }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ schema: 'future-v4' }));
 
     await expect(loadAllowanceDiagnostics(runtime)).rejects.toThrow('unsupported schema');
     await expect(loadAllowanceHistory({ ...runtime, fileMode: true })).rejects.toThrow('localhost dashboard server');
