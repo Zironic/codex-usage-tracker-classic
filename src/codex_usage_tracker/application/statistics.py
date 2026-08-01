@@ -10,6 +10,12 @@ from statistics import fmean, pstdev
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from codex_usage_tracker.application.statistics_model_rows import (
+    build_model_rows,
+    new_model_state,
+    normalize_model_label,
+    record_model_call,
+)
 from codex_usage_tracker.application.statistics_models import (
     StatisticsRequest,
     parse_statistics_timestamp,
@@ -76,9 +82,7 @@ def _aggregate(
     zone = ZoneInfo(request.timezone)
     credits: list[float] = []
     confidence = Counter[str]()
-    models: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"calls": 0, "credits": [], "days": set(), "hours": set()}
-    )
+    models: dict[str, dict[str, Any]] = defaultdict(new_model_state)
     daily_calls: Counter[date] = Counter()
     daily_credits: Counter[date] = Counter()
     hourly_calls: Counter[datetime] = Counter()
@@ -101,7 +105,7 @@ def _aggregate(
         local = observed.astimezone(zone)
         day = local.date()
         hour = observed.replace(minute=0, second=0, microsecond=0)
-        model = str(row.get("model") or "Unknown model")
+        model = normalize_model_label(row.get("model"))
         value = _credit(row.get("usage_credits"))
         label = str(row.get("usage_credit_confidence") or "unpriced")
         if value is None:
@@ -112,16 +116,12 @@ def _aggregate(
         heat_key = (local.weekday(), local.hour)
         heat_calls[heat_key] += 1
         heat_dates[heat_key].add(day)
-        model_state = models[model]
-        model_state["calls"] += 1
-        model_state["days"].add(day)
-        model_state["hours"].add(hour)
+        record_model_call(models[model], row, day=day, hour=hour, credit=value)
         if value is not None:
             credits.append(value)
             daily_credits[day] += value
             hourly_credits[hour] += value
             heat_credits[heat_key] += value
-            model_state["credits"].append(value)
             top_calls.append(
                 {
                     "record_id": str(row.get("record_id") or ""),
@@ -204,7 +204,13 @@ def _aggregate(
             "calls_per_elapsed_hour": _rate(len(rows), elapsed_hours),
             "calls_per_active_hour": _rate(len(rows), len(hourly_calls)),
         },
-        "model_rows": _model_rows(models, total_credits),
+        "model_rows": build_model_rows(
+            models,
+            total_credits=total_credits,
+            total_calls=len(rows),
+            distribution=_distribution,
+            rate=_rate,
+        ),
         "series": {"granularity": "day", "points": series},
         "hourly_series": hourly_series,
         "heatmap": [
@@ -271,38 +277,6 @@ def _quantile(values: list[float], fraction: float) -> float:
     if lower == upper:
         return values[lower]
     return values[lower] + (values[upper] - values[lower]) * (position - lower)
-
-
-def _model_rows(models: dict[str, dict[str, Any]], total: float) -> list[dict[str, object]]:
-    result = []
-    for model, state in models.items():
-        dist = _distribution(state["credits"])
-        result.append(
-            {
-                "model": model,
-                "calls": state["calls"],
-                "priced_calls": len(state["credits"]),
-                "priced_call_ratio": _rate(len(state["credits"]), state["calls"]),
-                "known_credits": round(sum(state["credits"]), 6),
-                "credit_share": _rate(sum(state["credits"]), total),
-                "active_days": len(state["days"]),
-                "active_hour_buckets": len(state["hours"]),
-                **{
-                    key: dist[key]
-                    for key in (
-                        "mean",
-                        "median",
-                        "p75",
-                        "p90",
-                        "p95",
-                        "minimum",
-                        "maximum",
-                        "population_standard_deviation",
-                    )
-                },
-            }
-        )
-    return sorted(result, key=lambda row: (-float(row["known_credits"]), -int(row["calls"])))
 
 
 def _series(
