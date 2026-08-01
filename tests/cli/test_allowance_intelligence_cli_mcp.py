@@ -70,7 +70,7 @@ def test_usage_allowance_mcp_tools_return_contracts(tmp_path: Path, monkeypatch)
 
     assert history["schema"] == "codex-usage-tracker-allowance-history-v1"
     assert diagnostics["schema"] == "codex-usage-tracker-allowance-diagnostics-v1"
-    assert export["schema"] == "codex-usage-tracker-allowance-evidence-export-v1"
+    assert export["schema"] == "codex-usage-tracker-allowance-evidence-export-v3"
     assert export["privacy_mode"] == "strict"
 
 
