@@ -50,12 +50,7 @@ export function buildCompactCallsExport(
   scope: CallsExportScope,
   generatedAt = new Date(),
 ): Record<string, unknown> {
-  const timestamps = rows
-    .map(row => callTimestamp(row))
-    .filter((value): value is number => value !== null);
-  const originMs = timestamps.length
-    ? Math.floor(Math.min(...timestamps) / 1000) * 1000
-    : null;
+  const originMs = earliestTimestamp(rows);
   const dictionaries = {
     threads: new StringDictionary(),
     projects: new StringDictionary(),
@@ -203,6 +198,16 @@ class StringDictionary {
     this.indexes.set(normalized, index);
     return index;
   }
+}
+
+function earliestTimestamp(rows: CallRow[]): number | null {
+  let earliest: number | null = null;
+  for (const row of rows) {
+    const timestamp = callTimestamp(row);
+    if (timestamp === null) continue;
+    earliest = earliest === null ? timestamp : Math.min(earliest, timestamp);
+  }
+  return earliest === null ? null : Math.floor(earliest / 1000) * 1000;
 }
 
 function callTimestamp(row: CallRow): number | null {
