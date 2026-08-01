@@ -51,7 +51,7 @@ def test_allowance_diagnostics_and_export_accept_unbounded_limits(
         **common,
     )
     export = server_allowance.allowance_export_payload(
-        f"window_kind=weekly&{limit_query}",
+        f"window_kind=weekly&format=compact&{limit_query}",
         **common,
     )
 
@@ -88,12 +88,26 @@ def test_allowance_diagnostics_payload_validates_window_kind(tmp_path: Path) -> 
         )
 
 
-def test_allowance_export_payload_defaults_to_compact_strict_privacy(tmp_path: Path) -> None:
-    db_path = _allowance_db(tmp_path)
-
+def test_allowance_export_payload_defaults_to_verbose_v1_for_legacy_clients(
+    tmp_path: Path,
+) -> None:
     payload = server_allowance.allowance_export_payload(
         "",
-        db_path=db_path,
+        db_path=_allowance_db(tmp_path),
+        allowance_path=tmp_path / "allowance.json",
+        rate_card_path=tmp_path / "rate-card.json",
+        include_archived_default=False,
+    )
+
+    assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v1"
+    assert payload["privacy_mode"] == "strict"
+    assert "change_candidates" in payload
+
+
+def test_allowance_export_payload_supports_compact_v2(tmp_path: Path) -> None:
+    payload = server_allowance.allowance_export_payload(
+        "format=compact",
+        db_path=_allowance_db(tmp_path),
         allowance_path=tmp_path / "allowance.json",
         rate_card_path=tmp_path / "rate-card.json",
         include_archived_default=False,
@@ -105,7 +119,7 @@ def test_allowance_export_payload_defaults_to_compact_strict_privacy(tmp_path: P
     assert payload["coverage"]["truncated"] is False
 
 
-def test_allowance_export_payload_preserves_verbose_v1(tmp_path: Path) -> None:
+def test_allowance_export_payload_preserves_explicit_verbose_v1(tmp_path: Path) -> None:
     payload = server_allowance.allowance_export_payload(
         "format=verbose",
         db_path=_allowance_db(tmp_path),
