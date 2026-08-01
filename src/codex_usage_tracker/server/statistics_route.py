@@ -18,7 +18,6 @@ from codex_usage_tracker.interfaces.http.serialization import (
 )
 
 MAX_STATISTICS_REQUEST_BYTES = 16 * 1024
-MAX_STATISTICS_RESPONSE_BYTES = 256 * 1024
 
 
 def statistics_response(
