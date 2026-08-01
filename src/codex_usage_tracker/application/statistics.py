@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from statistics import fmean, pstdev
@@ -84,11 +85,11 @@ def _aggregate(
     confidence = Counter[str]()
     models: dict[str, dict[str, Any]] = defaultdict(new_model_state)
     daily_calls: Counter[date] = Counter()
-    daily_credits: Counter[date] = Counter()
+    daily_credits: defaultdict[date, float] = defaultdict(float)
     hourly_calls: Counter[datetime] = Counter()
-    hourly_credits: Counter[datetime] = Counter()
+    hourly_credits: defaultdict[datetime, float] = defaultdict(float)
     heat_calls: Counter[tuple[int, int]] = Counter()
-    heat_credits: Counter[tuple[int, int]] = Counter()
+    heat_credits: defaultdict[tuple[int, int], float] = defaultdict(float)
     heat_dates: dict[tuple[int, int], set[date]] = defaultdict(set)
     sessions: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
@@ -168,8 +169,14 @@ def _aggregate(
     active_days = sum(1 for item in series if item["calls"])
     elapsed_hours = max((end - start).total_seconds() / 3600, 0)
     session_rows = [_session_payload(item) for item in sessions]
-    top_calls.sort(key=lambda item: float(item["usage_credits"]), reverse=True)
-    session_rows.sort(key=lambda item: float(item["known_credits"]), reverse=True)
+    top_calls.sort(
+        key=lambda item: _object_number(item.get("usage_credits")),
+        reverse=True,
+    )
+    session_rows.sort(
+        key=lambda item: _object_number(item.get("known_credits")),
+        reverse=True,
+    )
     return {
         "coverage": {
             "total_call_count": len(rows),
@@ -244,7 +251,7 @@ def _aggregate(
 
 def _distribution(values: list[float]) -> dict[str, object]:
     if not values:
-        return {
+        empty: dict[str, object] = {
             key: None
             for key in (
                 "mean",
@@ -256,7 +263,9 @@ def _distribution(values: list[float]) -> dict[str, object]:
                 "maximum",
                 "population_standard_deviation",
             )
-        } | {"count": 0}
+        }
+        empty["count"] = 0
+        return empty
     ordered = sorted(values)
     return {
         "count": len(ordered),
@@ -281,18 +290,18 @@ def _quantile(values: list[float], fraction: float) -> float:
 
 def _series(
     days: list[date],
-    calls: Counter[date],
-    credits: Counter[date],
+    calls: Mapping[date, int],
+    credits: Mapping[date, float],
 ) -> list[dict[str, object]]:
     values: list[float] = []
     result = []
     for day in days:
-        value = float(credits[day])
+        value = float(credits.get(day, 0.0))
         values.append(value)
         result.append(
             {
                 "period_start": day.isoformat(),
-                "calls": calls[day],
+                "calls": calls.get(day, 0),
                 "known_credits": round(value, 6),
                 "rolling_7d_credits": round(fmean(values[-7:]), 6),
                 "rolling_30d_credits": round(fmean(values[-30:]), 6),
@@ -305,8 +314,8 @@ def _hourly_series(
     start: datetime,
     end: datetime,
     zone: ZoneInfo,
-    calls: Counter[datetime],
-    credits: Counter[datetime],
+    calls: Mapping[datetime, int],
+    credits: Mapping[datetime, float],
     *,
     all_time: bool,
 ) -> dict[str, object] | None:
@@ -319,8 +328,8 @@ def _hourly_series(
             {
                 "period_start": _iso(hour),
                 "local_period_start": hour.astimezone(zone).isoformat(),
-                "calls": calls[hour],
-                "known_credits": round(float(credits[hour]), 6),
+                "calls": calls.get(hour, 0),
+                "known_credits": round(float(credits.get(hour, 0.0)), 6),
             }
             for hour in _hours(start, end)
         ],
@@ -376,8 +385,8 @@ def _session_payload(item: dict[str, Any]) -> dict[str, object]:
 
 def _concentration(
     credits: list[float],
-    daily: Counter[date],
-    hourly: Counter[datetime],
+    daily: Mapping[date, float],
+    hourly: Mapping[datetime, float],
     sessions: list[dict[str, object]],
 ) -> dict[str, object]:
     ordered = sorted(credits, reverse=True)
@@ -396,7 +405,9 @@ def _concentration(
         "busiest_day_share": share(sorted(daily.values(), reverse=True)) if daily else None,
         "busiest_hour_share": share(sorted(hourly.values(), reverse=True)) if hourly else None,
         "busiest_session_share": (
-            share([float(row["known_credits"]) for row in sessions]) if sessions else None
+            share([_object_number(row.get("known_credits")) for row in sessions])
+            if sessions
+            else None
         ),
     }
 
@@ -420,6 +431,12 @@ def _credit(value: object) -> float | None:
         return None
     number = float(value)
     return number if math.isfinite(number) and number >= 0 else None
+
+
+def _object_number(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return 0.0
+    return float(value)
 
 
 def _rate(numerator: float | int, denominator: float | int) -> float | None:
