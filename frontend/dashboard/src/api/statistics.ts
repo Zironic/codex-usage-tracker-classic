@@ -68,7 +68,7 @@ export type StatisticsPayload = {
   data_state: 'ready' | 'refresh_required';
   reason: string | null;
   scope: Record<string, unknown>;
-  coverage?: {
+  coverage: {
     total_call_count: number;
     priced_call_count: number;
     priced_call_ratio: number;
