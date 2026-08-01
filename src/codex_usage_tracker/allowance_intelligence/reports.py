@@ -9,11 +9,14 @@ from typing import Any
 
 from codex_usage_tracker.allowance_intelligence.export_payload import (
     ALLOWANCE_EXPORT_COMPACT_SCHEMA,
+    ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA,
     ALLOWANCE_EXPORT_FORMATS,
     ALLOWANCE_EXPORT_VERBOSE_SCHEMA,
     AllowanceExportCoverage,
     build_compact_allowance_export,
+    build_compact_allowance_export_v2,
     build_verbose_allowance_export,
+    normalize_time_origin,
 )
 from codex_usage_tracker.allowance_intelligence.model import (
     WINDOW_KIND_CHOICES,
@@ -58,6 +61,7 @@ class AllowanceReport:
             return _render_history(self.payload)
         if schema in {
             ALLOWANCE_EXPORT_COMPACT_SCHEMA,
+            ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA,
             ALLOWANCE_EXPORT_VERBOSE_SCHEMA,
         }:
             return _render_export(self.payload)
@@ -149,7 +153,8 @@ def build_allowance_export_report(
 
     _validate_window_kind(window_kind)
     if export_format not in ALLOWANCE_EXPORT_FORMATS:
-        raise ValueError("export_format must be compact or verbose")
+        allowed = ", ".join(ALLOWANCE_EXPORT_FORMATS)
+        raise ValueError(f"export_format must be one of: {allowed}")
     if bool(from_plan) != bool(to_plan):
         raise ValueError("from_plan and to_plan must be provided together")
     selection, rows = _annotated_observation_selection(
@@ -161,18 +166,25 @@ def build_allowance_export_report(
         limit=limit,
     )
     generated_at = _generated_at()
+    compact_format = export_format in {"compact", "compact-v2"}
     diagnostics = _diagnostics_payload(
         rows,
         generated_at=generated_at,
         include_archived=include_archived,
         window_kind=window_kind,
-        privacy_mode="strict",
+        privacy_mode="normal" if compact_format else "strict",
     )
     notes = [
         *_privacy_notes(),
         "This bundle is local evidence only and is not an official OpenAI usage ledger.",
-        "Exact timestamps are bucketed to dates and local record identifiers are omitted.",
     ]
+    if export_format == "compact":
+        notes.append(
+            "Source timestamps are rounded down to UTC minutes and encoded as offsets from "
+            "layout.time_origin; exact source timestamps and local identifiers are omitted."
+        )
+    else:
+        notes.append("Exact timestamps are bucketed to dates and local identifiers are omitted.")
     if export_format == "verbose":
         return AllowanceReport(
             build_verbose_allowance_export(
@@ -207,6 +219,19 @@ def build_allowance_export_report(
             from_plan=from_plan,
             to_plan=to_plan,
         )
+    if export_format == "compact-v2":
+        return AllowanceReport(
+            build_compact_allowance_export_v2(
+                diagnostics,
+                generated_at=generated_at,
+                include_archived=include_archived,
+                window_kind=window_kind,
+                requested_limit=limit,
+                coverage=coverage,
+                plan_comparison=plan_comparison,
+                notes=notes,
+            )
+        )
     return AllowanceReport(
         build_compact_allowance_export(
             diagnostics,
@@ -215,6 +240,7 @@ def build_allowance_export_report(
             window_kind=window_kind,
             requested_limit=limit,
             coverage=coverage,
+            time_origin=normalize_time_origin(selected_start_at),
             plan_comparison=plan_comparison,
             notes=notes,
         )
