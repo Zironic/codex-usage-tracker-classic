@@ -21,13 +21,14 @@ def test_known_old_to_new_rates_recover_interval_bounded_change() -> None:
         first_observed_at="2026-08-01T06:43:00Z",
     )
 
+    assert result["detector_version"] == "known-rate-hypothesis-interval-v2"
     assert result["status"] == "supported_change"
     assert result["confidence"] == "high"
     estimate = result["estimate"]
     assert estimate is not None
     assert estimate["effective_at_estimate"] == "2026-08-01T00:00:00Z"
     assert estimate["effective_at_lower_bound"] == "2026-07-31T23:00:00Z"
-    assert estimate["effective_at_upper_bound"] == "2026-08-01T01:00:00Z"
+    assert estimate["effective_at_upper_bound"] == "2026-08-01T02:00:00Z"
     evidence = result["evidence"]
     assert evidence["before_interval_count"] == 6
     assert evidence["after_interval_count"] == 6
