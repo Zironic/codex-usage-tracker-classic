@@ -43,6 +43,22 @@
   flex-wrap: wrap;
 }
 
+.exportModeSelect {
+  min-height: 38px;
+  padding: 0 32px 0 11px;
+  border: 1px solid var(--line-strong, var(--dashboard-border));
+  border-radius: 8px;
+  color: var(--ink-strong, var(--dashboard-text));
+  background: var(--surface-panel, var(--dashboard-surface));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.exportModeSelect:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .queryBar {
   position: relative;
   z-index: 3;
