@@ -24,6 +24,15 @@ class UsageStatisticsSelection:
     materialized_call_count: int
 
 
+@dataclass(frozen=True)
+class _StatisticsReadiness:
+    data_state: str
+    reason: str | None
+    source_generation: int
+    fact_generation: int | None
+    materialized_call_count: int
+
+
 def query_usage_statistics_rows(
     *,
     db_path: Path = DEFAULT_DB_PATH,
@@ -37,18 +46,14 @@ def query_usage_statistics_rows(
     with connect(db_path) as connection:
         init_db(connection)
         readiness = _statistics_readiness(connection)
-        if readiness["data_state"] != "ready":
+        if readiness.data_state != "ready":
             return UsageStatisticsSelection(
                 rows=[],
-                data_state=str(readiness["data_state"]),
-                reason=str(readiness["reason"]),
-                source_generation=int(readiness["source_generation"]),
-                fact_generation=(
-                    int(readiness["fact_generation"])
-                    if readiness["fact_generation"] is not None
-                    else None
-                ),
-                materialized_call_count=int(readiness["materialized_call_count"]),
+                data_state=readiness.data_state,
+                reason=readiness.reason,
+                source_generation=readiness.source_generation,
+                fact_generation=readiness.fact_generation,
+                materialized_call_count=readiness.materialized_call_count,
             )
 
         clauses = ["event_timestamp >= ?", "event_timestamp < ?"]
@@ -89,13 +94,13 @@ def query_usage_statistics_rows(
         rows=[row_to_dict(row) for row in rows],
         data_state="ready",
         reason=None,
-        source_generation=int(readiness["source_generation"]),
-        fact_generation=int(readiness["fact_generation"]),
-        materialized_call_count=int(readiness["materialized_call_count"]),
+        source_generation=readiness.source_generation,
+        fact_generation=readiness.fact_generation,
+        materialized_call_count=readiness.materialized_call_count,
     )
 
 
-def _statistics_readiness(connection: Any) -> dict[str, object]:
+def _statistics_readiness(connection: Any) -> _StatisticsReadiness:
     source_row = connection.execute(
         "SELECT generation FROM compression_source_state WHERE singleton = 1"
     ).fetchone()
@@ -108,27 +113,27 @@ def _statistics_readiness(connection: Any) -> dict[str, object]:
         """
     ).fetchone()
     if fact_row is None:
-        return {
-            "data_state": "refresh_required",
-            "reason": "recommendation_facts_missing",
-            "source_generation": source_generation,
-            "fact_generation": None,
-            "materialized_call_count": 0,
-        }
+        return _StatisticsReadiness(
+            data_state="refresh_required",
+            reason="recommendation_facts_missing",
+            source_generation=source_generation,
+            fact_generation=None,
+            materialized_call_count=0,
+        )
     fact_generation = int(fact_row["source_generation"])
     record_count = int(fact_row["record_count"])
     if fact_generation != source_generation:
-        return {
-            "data_state": "refresh_required",
-            "reason": "recommendation_facts_stale",
-            "source_generation": source_generation,
-            "fact_generation": fact_generation,
-            "materialized_call_count": record_count,
-        }
-    return {
-        "data_state": "ready",
-        "reason": None,
-        "source_generation": source_generation,
-        "fact_generation": fact_generation,
-        "materialized_call_count": record_count,
-    }
+        return _StatisticsReadiness(
+            data_state="refresh_required",
+            reason="recommendation_facts_stale",
+            source_generation=source_generation,
+            fact_generation=fact_generation,
+            materialized_call_count=record_count,
+        )
+    return _StatisticsReadiness(
+        data_state="ready",
+        reason=None,
+        source_generation=source_generation,
+        fact_generation=fact_generation,
+        materialized_call_count=record_count,
+    )
