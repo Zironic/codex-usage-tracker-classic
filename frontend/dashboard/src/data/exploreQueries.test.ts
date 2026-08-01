@@ -41,6 +41,28 @@ describe('Explore endpoint queries', () => {
     });
   });
 
+  it('uses limit zero to request the complete filtered call set', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({
+      schema: 'codex-usage-tracker-calls-v1', rows: [], row_count: 0, total_matched_rows: 0, limit: null, offset: 0,
+    }));
+
+    await loadCallsPage({
+      runtime,
+      includeArchived: false,
+      sourceRevision: 'rev-export',
+      filters: { model: 'gpt-5.6-luna' },
+      sort: 'time',
+      direction: 'asc',
+      pageSize: 0,
+    }, 0, 0);
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost');
+    expect(url.searchParams.get('limit')).toBe('0');
+    expect(url.searchParams.get('offset')).toBe('0');
+    expect(url.searchParams.get('model')).toBe('gpt-5.6-luna');
+    expect(url.searchParams.get('direction')).toBe('asc');
+  });
+
   it('pages both thread summaries and selected-thread calls', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(response({
