@@ -71,7 +71,7 @@ def _run_allowance_export(args: argparse.Namespace) -> int:
     )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        if args.export_format == "compact":
+        if args.export_format.startswith("compact"):
             encoded = json.dumps(
                 report.payload,
                 ensure_ascii=False,
