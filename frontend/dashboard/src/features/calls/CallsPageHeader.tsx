@@ -1,11 +1,15 @@
 import { Copy, Download, RefreshCw } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import {
+  callsExportModeOptions,
+  type CallsExportMode,
+} from './callsExport';
 import styles from './CallsPage.module.css';
 
 type CallsPageHeaderProps = {
   workspaceSwitcher?: ReactNode;
   canExport: boolean;
-  onExport(): void;
+  onExport(mode: CallsExportMode): Promise<void>;
   onCopyView(): void;
   onRefresh(): void;
 };
@@ -17,6 +21,19 @@ export function CallsPageHeader({
   onCopyView,
   onRefresh,
 }: CallsPageHeaderProps) {
+  const [exportMode, setExportMode] = useState<CallsExportMode>('compact-json');
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    if (exporting || !canExport) return;
+    setExporting(true);
+    try {
+      await onExport(exportMode);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <header className={styles.pageHeader}>
       <div>
@@ -26,9 +43,27 @@ export function CallsPageHeader({
       </div>
       <div className={styles.headerActions}>
         {workspaceSwitcher}
-        <button className="toolbar-button" type="button" onClick={onExport} disabled={!canExport}>
+        <select
+          className={styles.exportModeSelect}
+          aria-label="Calls export format"
+          value={exportMode}
+          onChange={event => setExportMode(event.target.value as CallsExportMode)}
+          disabled={exporting}
+        >
+          {callsExportModeOptions.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button
+          className="toolbar-button"
+          type="button"
+          onClick={() => void handleExport()}
+          disabled={!canExport || exporting}
+        >
           <Download size={16} />
-          Export
+          {exporting ? 'Exporting…' : 'Export'}
         </button>
         <button className="toolbar-button" type="button" onClick={onCopyView}>
           <Copy size={16} />
