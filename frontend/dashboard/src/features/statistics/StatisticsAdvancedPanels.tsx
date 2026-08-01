@@ -58,7 +58,9 @@ export function StatisticsAdvancedPanels({ payload }: { payload: StatisticsPaylo
         <Surface>
           <h2>Before and after comparison</h2>
           <p className={styles.note}>
-            Split at {new Date(String(cohorts?.comparison_at)).toLocaleString()}.
+            Split at {cohorts?.comparison_at
+              ? new Date(cohorts.comparison_at).toLocaleString()
+              : 'the selected breakpoint'}.
           </p>
           <CohortTable rows={cohorts?.breakpoint_rows ?? []} />
         </Surface>
@@ -83,10 +85,16 @@ export function StatisticsAdvancedPanels({ payload }: { payload: StatisticsPaylo
         </Surface>
       </section>
 
-      <Surface>
-        <h2>Initiator × model</h2>
-        <GroupTable rows={breakdowns.initiator_model ?? []} />
-      </Surface>
+      <section className={styles.grid}>
+        <Surface>
+          <h2>Initiator × model</h2>
+          <GroupTable rows={breakdowns.initiator_model ?? []} />
+        </Surface>
+        <Surface>
+          <h2>Initiator × active hour</h2>
+          <GroupTable rows={breakdowns.initiator_active_hour ?? []} />
+        </Surface>
+      </section>
 
       <section className={styles.grid}>
         <Surface>
