@@ -197,7 +197,7 @@ function StatisticsContent({
 }) {
   const headline = payload.headline ?? {};
   const distribution = payload.distribution ?? {};
-  const coverage = payload.coverage ?? {};
+  const coverage = payload.coverage;
   const hourlyAvailable = hourlyRangeAvailable && Boolean(payload.hourly_series);
   const activeGranularity = granularity === 'hour' && hourlyAvailable ? 'hour' : 'day';
   const selectedSeries = activeGranularity === 'hour'
@@ -249,8 +249,8 @@ function StatisticsContent({
             ))}
           </dl>
           <p className={styles.note}>
-            {integer(coverage.priced_call_count)} priced of{' '}
-            {integer(coverage.total_call_count)} calls ({percent(coverage.priced_call_ratio)}).
+            {integer(coverage?.priced_call_count)} priced of{' '}
+            {integer(coverage?.total_call_count)} calls ({percent(coverage?.priced_call_ratio)}).
           </p>
         </Surface>
         <Surface>
