@@ -43,6 +43,7 @@ def test_usage_statistics_calculates_distribution_rates_sessions_and_models(monk
         "query_usage_statistics_rows",
         lambda **_kwargs: _selection(rows),
     )
+    monkeypatch.setattr(statistics, "_rate_revisions", lambda: ())
 
     payload = statistics.get_usage_statistics(
         StatisticsRequest(
@@ -86,6 +87,98 @@ def test_usage_statistics_calculates_distribution_rates_sessions_and_models(monk
     assert hourly["points"][10]["calls"] == 1
 
 
+def test_active_time_turns_cohorts_breakdowns_and_attribution(monkeypatch) -> None:
+    rows = [
+        _row(
+            "a",
+            "2026-07-30T08:02:00Z",
+            "gpt-sol",
+            10.0,
+            "exact",
+            session_id="session-1",
+            turn_id="turn-1",
+            turn_timestamp="2026-07-30T08:00:00Z",
+            cwd="C:/work/Tracker",
+            thread_name="Statistics work",
+            plan="Plus",
+        ),
+        _row(
+            "b",
+            "2026-07-30T08:05:00Z",
+            "gpt-sol",
+            5.0,
+            "exact",
+            session_id="session-1",
+            turn_id="turn-1",
+            turn_timestamp="2026-07-30T08:00:00Z",
+            previous_call_event_timestamp="2026-07-30T08:02:00Z",
+            previous_call_session_id="session-1",
+            previous_call_turn_id="turn-1",
+            cwd="C:/work/Tracker",
+            thread_name="Statistics work",
+            plan="Plus",
+            parent_session_id="parent-1",
+            subagent_type="worker",
+        ),
+        _row(
+            "c",
+            "2026-07-30T08:20:00Z",
+            "gpt-luna",
+            15.0,
+            "exact",
+            session_id="session-1",
+            turn_id="turn-2",
+            turn_timestamp="2026-07-30T08:18:00Z",
+            previous_call_event_timestamp="2026-07-30T08:05:00Z",
+            previous_call_session_id="session-1",
+            previous_call_turn_id="turn-1",
+            cwd="C:/work/Tracker",
+            thread_name="Statistics work",
+            plan="Prolite",
+            effort="high",
+            fast=True,
+        ),
+    ]
+    monkeypatch.setattr(
+        statistics,
+        "query_usage_statistics_rows",
+        lambda **_kwargs: _selection(rows),
+    )
+    monkeypatch.setattr(statistics, "_rate_revisions", lambda: ())
+
+    payload = statistics.get_usage_statistics(
+        StatisticsRequest(
+            since="2026-07-30T08:00:00Z",
+            until="2026-07-30T09:00:00Z",
+            timezone="UTC",
+            session_gap_minutes=30,
+            active_gap_cap_minutes=5,
+            comparison_at="2026-07-30T08:10:00Z",
+        )
+    )
+
+    assert payload["activity"]["estimated_active_seconds"] == 720.0
+    assert payload["activity"]["measured_call_duration_seconds"] == 420.0
+    assert payload["activity"]["capped_inter_call_gap_seconds"] == 300.0
+    assert payload["activity"]["distinct_turns"] == 2
+    assert payload["activity"]["calls_per_turn"] == 1.5
+    assert payload["activity"]["subagent_calls_per_turn"] == 0.5
+    assert payload["headline"]["calls_per_active_hour"] == 15.0
+    assert payload["headline"]["credits_per_active_hour"] == 150.0
+    assert payload["sessions"]["count"] == 1
+    assert payload["sessions"]["duration_distribution"]["median"] == 1200.0
+    assert payload["turns"]["rows"][0]["turn_group"] in {0, 1}
+    assert "session-1" not in str(payload["turns"]["rows"])
+
+    plan_rows = payload["cohorts"]["plan_rate_rows"]
+    assert [row["plan"] for row in plan_rows] == ["Plus", "Prolite"]
+    assert len(payload["cohorts"]["breakpoint_rows"]) == 2
+    assert payload["breakdowns"]["initiator_kind"][0]["label"] == "User/direct"
+    assert payload["breakdowns"]["fast_mode"][0]["label"] in {"Standard", "Fast"}
+    assert payload["attribution"]["projects"][0]["label"] == "Tracker"
+    assert payload["attribution"]["threads"][0]["thread"] == "Statistics work"
+
+
 def test_model_labels_normalize_whitespace_and_keep_unpriced_credit_metrics_unknown(
     monkeypatch,
 ) -> None:
@@ -95,6 +188,7 @@ def test_model_labels_normalize_whitespace_and_keep_unpriced_credit_metrics_unkn
         "query_usage_statistics_rows",
         lambda **_kwargs: _selection(rows),
     )
+    monkeypatch.setattr(statistics, "_rate_revisions", lambda: ())
 
     payload = statistics.get_usage_statistics(
         StatisticsRequest(
@@ -118,6 +212,7 @@ def test_hourly_series_preserves_dst_skips_and_repeated_hours(monkeypatch) -> No
         "query_usage_statistics_rows",
         lambda **_kwargs: _selection([]),
     )
+    monkeypatch.setattr(statistics, "_rate_revisions", lambda: ())
 
     spring = statistics.get_usage_statistics(
         StatisticsRequest(
@@ -157,6 +252,7 @@ def test_hourly_series_is_omitted_for_long_ranges(monkeypatch) -> None:
         "query_usage_statistics_rows",
         lambda **_kwargs: _selection([]),
     )
+    monkeypatch.setattr(statistics, "_rate_revisions", lambda: ())
 
     payload = statistics.get_usage_statistics(
         StatisticsRequest(
@@ -222,12 +318,25 @@ def _row(
     reasoning_output_tokens: int = 5,
     total_tokens: int = 110,
     context_window_percent: float = 0.5,
+    session_id: str | None = None,
+    turn_id: str | None = None,
+    turn_timestamp: str | None = None,
+    previous_call_event_timestamp: str | None = None,
+    previous_call_session_id: str | None = None,
+    previous_call_turn_id: str | None = None,
+    cwd: str | None = None,
+    thread_name: str | None = None,
+    plan: str | None = None,
+    effort: str = "medium",
+    fast: bool | None = False,
+    parent_session_id: str | None = None,
+    subagent_type: str | None = None,
 ):
     return {
         "record_id": record_id,
         "event_timestamp": timestamp,
         "model": model,
-        "effort": "medium",
+        "effort": effort,
         "input_tokens": input_tokens,
         "cached_input_tokens": cached_input_tokens,
         "uncached_input_tokens": uncached_input_tokens,
@@ -237,4 +346,19 @@ def _row(
         "context_window_percent": context_window_percent,
         "usage_credits": credits,
         "usage_credit_confidence": confidence,
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "turn_timestamp": turn_timestamp,
+        "previous_call_event_timestamp": previous_call_event_timestamp,
+        "previous_call_session_id": previous_call_session_id,
+        "previous_call_turn_id": previous_call_turn_id,
+        "cwd": cwd,
+        "thread_name": thread_name,
+        "call_initiator": "user",
+        "rate_limit_plan_type": plan,
+        "service_tier": "priority" if fast else "standard",
+        "fast": fast,
+        "thread_source": "subagent" if subagent_type else "session",
+        "subagent_type": subagent_type,
+        "parent_session_id": parent_session_id,
     }
