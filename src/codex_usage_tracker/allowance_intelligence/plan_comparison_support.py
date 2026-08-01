@@ -259,8 +259,8 @@ def _interval_rows(
         "reasoning_output_tokens,total_tokens,price_coverage "
         "FROM allowance_intervals WHERE source_revision = ? "
         "AND point_kind = 'positive' AND eligible_for_change_detection = 1 "
-        f"AND cycle_id IN ({placeholders}) ORDER BY end_observed_at, interval_id"
-    )  # nosec B608 -- dynamic fragment contains only generated '?' placeholders.
+        f"AND cycle_id IN ({placeholders}) ORDER BY end_observed_at, interval_id"  # nosec B608
+    )
     return [
         dict(row)
         for row in connection.execute(query, (source_revision, *cycle_ids))
