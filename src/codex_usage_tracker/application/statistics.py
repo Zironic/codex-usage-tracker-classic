@@ -18,6 +18,7 @@ from codex_usage_tracker.core.paths import DEFAULT_DB_PATH
 from codex_usage_tracker.store.usage_statistics_queries import query_usage_statistics_rows
 
 STATISTICS_SCHEMA = "codex-usage-tracker.dashboard-statistics.v1"
+MAX_HOURLY_SERIES_DAYS = 30
 
 
 def get_usage_statistics(
@@ -121,14 +122,16 @@ def _aggregate(
             hourly_credits[hour] += value
             heat_credits[heat_key] += value
             model_state["credits"].append(value)
-            top_calls.append({
-                "record_id": str(row.get("record_id") or ""),
-                "event_timestamp": _iso(observed),
-                "model": model,
-                "usage_credits": round(value, 6),
-                "usage_credit_confidence": label,
-                "total_tokens": int(row.get("total_tokens") or 0),
-            })
+            top_calls.append(
+                {
+                    "record_id": str(row.get("record_id") or ""),
+                    "event_timestamp": _iso(observed),
+                    "model": model,
+                    "usage_credits": round(value, 6),
+                    "usage_credit_confidence": label,
+                    "total_tokens": int(row.get("total_tokens") or 0),
+                }
+            )
         new_session = previous_at is None or (observed - previous_at).total_seconds() > gap
         if new_session:
             if current is not None:
@@ -152,6 +155,14 @@ def _aggregate(
 
     days = _days(start, end, zone)
     series = _series(days, daily_calls, daily_credits)
+    hourly_series = _hourly_series(
+        start,
+        end,
+        zone,
+        hourly_calls,
+        hourly_credits,
+        all_time=request.all_time,
+    )
     total_credits = sum(credits)
     distribution = _distribution(credits)
     active_days = sum(1 for item in series if item["calls"])
@@ -195,6 +206,7 @@ def _aggregate(
         },
         "model_rows": _model_rows(models, total_credits),
         "series": {"granularity": "day", "points": series},
+        "hourly_series": hourly_series,
         "heatmap": [
             {
                 "weekday": weekday,
@@ -226,10 +238,19 @@ def _aggregate(
 
 def _distribution(values: list[float]) -> dict[str, object]:
     if not values:
-        return {key: None for key in (
-            "mean", "median", "p75", "p90", "p95", "minimum", "maximum",
-            "population_standard_deviation",
-        )} | {"count": 0}
+        return {
+            key: None
+            for key in (
+                "mean",
+                "median",
+                "p75",
+                "p90",
+                "p95",
+                "minimum",
+                "maximum",
+                "population_standard_deviation",
+            )
+        } | {"count": 0}
     ordered = sorted(values)
     return {
         "count": len(ordered),
@@ -256,37 +277,80 @@ def _model_rows(models: dict[str, dict[str, Any]], total: float) -> list[dict[st
     result = []
     for model, state in models.items():
         dist = _distribution(state["credits"])
-        result.append({
-            "model": model,
-            "calls": state["calls"],
-            "priced_calls": len(state["credits"]),
-            "priced_call_ratio": _rate(len(state["credits"]), state["calls"]),
-            "known_credits": round(sum(state["credits"]), 6),
-            "credit_share": _rate(sum(state["credits"]), total),
-            "active_days": len(state["days"]),
-            "active_hour_buckets": len(state["hours"]),
-            **{key: dist[key] for key in (
-                "mean", "median", "p75", "p90", "p95", "minimum", "maximum",
-                "population_standard_deviation",
-            )},
-        })
+        result.append(
+            {
+                "model": model,
+                "calls": state["calls"],
+                "priced_calls": len(state["credits"]),
+                "priced_call_ratio": _rate(len(state["credits"]), state["calls"]),
+                "known_credits": round(sum(state["credits"]), 6),
+                "credit_share": _rate(sum(state["credits"]), total),
+                "active_days": len(state["days"]),
+                "active_hour_buckets": len(state["hours"]),
+                **{
+                    key: dist[key]
+                    for key in (
+                        "mean",
+                        "median",
+                        "p75",
+                        "p90",
+                        "p95",
+                        "minimum",
+                        "maximum",
+                        "population_standard_deviation",
+                    )
+                },
+            }
+        )
     return sorted(result, key=lambda row: (-float(row["known_credits"]), -int(row["calls"])))
 
 
-def _series(days: list[date], calls: Counter[date], credits: Counter[date]) -> list[dict[str, object]]:
+def _series(
+    days: list[date],
+    calls: Counter[date],
+    credits: Counter[date],
+) -> list[dict[str, object]]:
     values: list[float] = []
     result = []
     for day in days:
         value = float(credits[day])
         values.append(value)
-        result.append({
-            "period_start": day.isoformat(),
-            "calls": calls[day],
-            "known_credits": round(value, 6),
-            "rolling_7d_credits": round(fmean(values[-7:]), 6),
-            "rolling_30d_credits": round(fmean(values[-30:]), 6),
-        })
+        result.append(
+            {
+                "period_start": day.isoformat(),
+                "calls": calls[day],
+                "known_credits": round(value, 6),
+                "rolling_7d_credits": round(fmean(values[-7:]), 6),
+                "rolling_30d_credits": round(fmean(values[-30:]), 6),
+            }
+        )
     return result
+
+
+def _hourly_series(
+    start: datetime,
+    end: datetime,
+    zone: ZoneInfo,
+    calls: Counter[datetime],
+    credits: Counter[datetime],
+    *,
+    all_time: bool,
+) -> dict[str, object] | None:
+    if all_time or end - start > timedelta(days=MAX_HOURLY_SERIES_DAYS):
+        return None
+    return {
+        "granularity": "hour",
+        "timezone": str(zone.key),
+        "points": [
+            {
+                "period_start": _iso(hour),
+                "local_period_start": hour.astimezone(zone).isoformat(),
+                "calls": calls[hour],
+                "known_credits": round(float(credits[hour]), 6),
+            }
+            for hour in _hours(start, end)
+        ],
+    }
 
 
 def _days(start: datetime, end: datetime, zone: ZoneInfo) -> list[date]:
@@ -297,9 +361,29 @@ def _days(start: datetime, end: datetime, zone: ZoneInfo) -> list[date]:
     return [first + timedelta(days=offset) for offset in range((last - first).days + 1)]
 
 
+def _hours(start: datetime, end: datetime) -> list[datetime]:
+    if start >= end:
+        return []
+    first = start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    last = (end - timedelta(microseconds=1)).astimezone(timezone.utc).replace(
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    count = int((last - first).total_seconds() // 3600) + 1
+    return [first + timedelta(hours=offset) for offset in range(count)]
+
+
 def _new_session(observed: datetime, model: str) -> dict[str, Any]:
-    return {"start_at": observed, "end_at": observed, "calls": 0, "known_credits": 0.0,
-            "priced_calls": 0, "models": {model}, "model_switches": 0}
+    return {
+        "start_at": observed,
+        "end_at": observed,
+        "calls": 0,
+        "known_credits": 0.0,
+        "priced_calls": 0,
+        "models": {model},
+        "model_switches": 0,
+    }
 
 
 def _session_payload(item: dict[str, Any]) -> dict[str, object]:
@@ -324,14 +408,22 @@ def _concentration(
 ) -> dict[str, object]:
     ordered = sorted(credits, reverse=True)
     total = sum(ordered)
+
     def share(values: list[float], count: int = 1) -> float | None:
         return _rate(sum(values[:count]), total)
+
     return {
-        "top_1_percent_call_share": share(ordered, max(1, math.ceil(len(ordered) * 0.01))) if ordered else None,
-        "top_10_percent_call_share": share(ordered, max(1, math.ceil(len(ordered) * 0.10))) if ordered else None,
+        "top_1_percent_call_share": (
+            share(ordered, max(1, math.ceil(len(ordered) * 0.01))) if ordered else None
+        ),
+        "top_10_percent_call_share": (
+            share(ordered, max(1, math.ceil(len(ordered) * 0.10))) if ordered else None
+        ),
         "busiest_day_share": share(sorted(daily.values(), reverse=True)) if daily else None,
         "busiest_hour_share": share(sorted(hourly.values(), reverse=True)) if hourly else None,
-        "busiest_session_share": share([float(row["known_credits"]) for row in sessions]) if sessions else None,
+        "busiest_session_share": (
+            share([float(row["known_credits"]) for row in sessions]) if sessions else None
+        ),
     }
 
 
@@ -342,7 +434,11 @@ def _timestamp(value: object) -> datetime | None:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return (
+        parsed.astimezone(timezone.utc)
+        if parsed.tzinfo
+        else parsed.replace(tzinfo=timezone.utc)
+    )
 
 
 def _credit(value: object) -> float | None:
