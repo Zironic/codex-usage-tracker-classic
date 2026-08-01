@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Hashable
 
 from codex_usage_tracker.application.statistics_activity import EnrichedCall
 
@@ -158,7 +158,10 @@ def build_cohorts(
 ) -> dict[str, object]:
     """Build automatic plan-rate segments and an optional arbitrary before/after split."""
 
-    ordered = sorted(calls, key=lambda call: (call.observed, call.row.get("record_id", "")))
+    ordered = sorted(
+        calls,
+        key=lambda call: (call.observed, str(call.row.get("record_id") or "")),
+    )
     plan_rate_rows: list[dict[str, object]] = []
     state: AggregateState | None = None
     state_key: tuple[str, str] | None = None
@@ -364,14 +367,17 @@ def _mix(values: Counter[str]) -> list[dict[str, object]]:
     ]
 
 
-def _top_share(states: object, metric: str) -> float | None:
-    values = [_state_metric(state, metric) for state in states]  # type: ignore[union-attr]
+def _top_share(
+    states: Iterable[AggregateState],
+    metric: str,
+) -> float | None:
+    values = [_state_metric(state, metric) for state in states]
     total = sum(values)
     return _rate(max(values, default=0.0), total)
 
 
-def _hhi(states: object, metric: str) -> float | None:
-    values = [_state_metric(state, metric) for state in states]  # type: ignore[union-attr]
+def _hhi(states: Iterable[AggregateState], metric: str) -> float | None:
+    values = [_state_metric(state, metric) for state in states]
     total = sum(values)
     if total <= 0:
         return None
@@ -384,10 +390,22 @@ def _state_metric(state: AggregateState, metric: str) -> float:
 
 def _row_sort_key(row: dict[str, object]) -> tuple[float, int, str]:
     return (
-        float(row.get("known_credits") or 0),
-        int(row.get("calls") or 0),
+        _number(row.get("known_credits")),
+        _integer(row.get("calls")),
         str(row.get("label") or ""),
     )
+
+
+def _number(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return 0.0
+    return float(value)
+
+
+def _integer(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value
 
 
 def _rate(numerator: float | int, denominator: float | int) -> float | None:
