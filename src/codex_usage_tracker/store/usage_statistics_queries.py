@@ -41,7 +41,7 @@ def query_usage_statistics_rows(
     include_archived: bool,
     model: str | None = None,
 ) -> UsageStatisticsSelection:
-    """Return timestamp-ordered materialized calls for one dashboard statistics range."""
+    """Return one ordered scan of priced facts joined to canonical call dimensions."""
 
     with connect(db_path) as connection:
         init_db(connection)
@@ -56,36 +56,60 @@ def query_usage_statistics_rows(
                 materialized_call_count=readiness.materialized_call_count,
             )
 
-        clauses = ["event_timestamp >= ?", "event_timestamp < ?"]
+        clauses = ["facts.event_timestamp >= ?", "facts.event_timestamp < ?"]
         params: list[object] = [since, until]
         if not include_archived:
-            clauses.append("is_archived = 0")
+            clauses.append("facts.is_archived = 0")
         if model == "Unknown model":
-            clauses.append("(model IS NULL OR trim(model) = '')")
+            clauses.append("(facts.model IS NULL OR trim(facts.model) = '')")
         elif model:
-            clauses.append("trim(model) = ?")
+            clauses.append("trim(facts.model) = ?")
             params.append(model.strip())
 
         rows = connection.execute(
             f"""
             SELECT
-                record_id,
-                event_timestamp,
-                thread_key,
-                model,
-                effort,
-                input_tokens,
-                cached_input_tokens,
-                uncached_input_tokens,
-                output_tokens,
-                reasoning_output_tokens,
-                total_tokens,
-                context_window_percent,
-                usage_credits,
-                usage_credit_confidence
-            FROM recommendation_facts
+                facts.record_id,
+                facts.event_timestamp,
+                facts.thread_key,
+                facts.model,
+                facts.effort,
+                facts.input_tokens,
+                facts.cached_input_tokens,
+                facts.uncached_input_tokens,
+                facts.output_tokens,
+                facts.reasoning_output_tokens,
+                facts.total_tokens,
+                facts.context_window_percent,
+                facts.usage_credits,
+                facts.usage_credit_confidence,
+                usage_events.session_id,
+                usage_events.turn_id,
+                usage_events.turn_timestamp,
+                usage_events.thread_name,
+                usage_events.cwd,
+                usage_events.call_initiator,
+                usage_events.rate_limit_plan_type,
+                usage_events.rate_limit_primary_used_percent,
+                usage_events.rate_limit_primary_window_minutes,
+                usage_events.rate_limit_secondary_used_percent,
+                usage_events.rate_limit_secondary_window_minutes,
+                usage_events.service_tier,
+                usage_events.fast,
+                usage_events.thread_source,
+                usage_events.subagent_type,
+                usage_events.agent_role,
+                usage_events.parent_session_id,
+                previous_usage.event_timestamp AS previous_call_event_timestamp,
+                previous_usage.session_id AS previous_call_session_id,
+                previous_usage.turn_id AS previous_call_turn_id
+            FROM recommendation_facts AS facts
+            JOIN canonical_usage_events AS usage_events
+                ON usage_events.record_id = facts.record_id
+            LEFT JOIN usage_events AS previous_usage
+                ON previous_usage.record_id = usage_events.previous_record_id
             WHERE {' AND '.join(clauses)}
-            ORDER BY event_timestamp ASC, record_id ASC
+            ORDER BY facts.event_timestamp ASC, facts.record_id ASC
             """,  # nosec B608 - clauses are selected from fixed internal predicates.
             params,
         ).fetchall()
