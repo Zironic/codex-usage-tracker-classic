@@ -14,7 +14,8 @@ type ReportsPageProps = {
   onCopyCallLink: (recordId: string) => void;
 };
 
-export function reportCallsForCurrentUrl(_model: DashboardModel): CallRow[] {
+export function reportCallsForCurrentUrl(model: DashboardModel): CallRow[] {
+  void model;
   return [];
 }
 
