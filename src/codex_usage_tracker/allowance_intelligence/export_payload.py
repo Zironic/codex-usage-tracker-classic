@@ -5,12 +5,22 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
-ALLOWANCE_EXPORT_COMPACT_SCHEMA = "codex-usage-tracker-allowance-evidence-export-v2"
+ALLOWANCE_EXPORT_COMPACT_SCHEMA = "codex-usage-tracker-allowance-evidence-export-v3"
+ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA = "codex-usage-tracker-allowance-evidence-export-v2"
 ALLOWANCE_EXPORT_VERBOSE_SCHEMA = "codex-usage-tracker-allowance-evidence-export-v1"
-ALLOWANCE_EXPORT_FORMATS = ("compact", "verbose")
+ALLOWANCE_EXPORT_FORMATS = ("compact", "compact-v2", "verbose")
 
 SPAN_COLUMNS = (
+    "start_minute",
+    "end_minute",
+    "start_used_percent",
+    "end_used_percent",
+    "estimated_usage_credits",
+    "row_count",
+)
+SPAN_COLUMNS_V2 = (
     "start_observed_date",
     "end_observed_date",
     "start_used_percent",
@@ -55,15 +65,113 @@ def build_compact_allowance_export(
     requested_limit: int | None,
     coverage: AllowanceExportCoverage,
     notes: Sequence[str],
+    time_origin: str | None,
     plan_comparison: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Build the column-oriented v2 export intended for model analysis."""
+    """Build the minute-resolution column-oriented v3 export."""
 
+    normalized_origin = normalize_time_origin(time_origin)
+    payload = _compact_payload_base(
+        diagnostics,
+        schema=ALLOWANCE_EXPORT_COMPACT_SCHEMA,
+        generated_at=generated_at,
+        include_archived=include_archived,
+        window_kind=window_kind,
+        requested_limit=requested_limit,
+        coverage=coverage,
+        layout={
+            "time_origin": normalized_origin,
+            "time_unit": "minute",
+            "timestamp_precision": "minute_floor",
+            "span_columns": list(SPAN_COLUMNS),
+            "conventions": {
+                "minute_offset": (
+                    "integer UTC minutes from layout.time_origin after flooring each "
+                    "timestamp to its minute"
+                ),
+                "null_end_minute": "same_as_start_minute",
+                "delta_usage_percent": "end_used_percent - start_used_percent",
+                "credits_per_percent": "estimated_usage_credits / delta_usage_percent",
+                "confidence_override": "[zero_based_span_row_index, confidence]",
+                "after_to_before_ratio": (
+                    "after median completed-cycle credits_per_percent divided by "
+                    "before median completed-cycle credits_per_percent"
+                ),
+            },
+        },
+        windows=[
+            compact_window(window, time_origin=normalized_origin)
+            for window in _mapping_rows(diagnostics.get("windows"))
+        ],
+        notes=notes,
+    )
+    if plan_comparison:
+        payload["plan_comparison"] = compact_plan_comparison(plan_comparison)
+    return payload
+
+
+def build_compact_allowance_export_v2(
+    diagnostics: Mapping[str, object],
+    *,
+    generated_at: str,
+    include_archived: bool,
+    window_kind: str | None,
+    requested_limit: int | None,
+    coverage: AllowanceExportCoverage,
+    notes: Sequence[str],
+    plan_comparison: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build the historical date-only column-oriented v2 export."""
+
+    payload = _compact_payload_base(
+        diagnostics,
+        schema=ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA,
+        generated_at=generated_at,
+        include_archived=include_archived,
+        window_kind=window_kind,
+        requested_limit=requested_limit,
+        coverage=coverage,
+        layout={
+            "span_columns": list(SPAN_COLUMNS_V2),
+            "conventions": {
+                "null_end_observed_date": "same_as_start_observed_date",
+                "delta_usage_percent": "end_used_percent - start_used_percent",
+                "credits_per_percent": "estimated_usage_credits / delta_usage_percent",
+                "confidence_override": "[zero_based_span_row_index, confidence]",
+                "after_to_before_ratio": (
+                    "after median completed-cycle credits_per_percent divided by "
+                    "before median completed-cycle credits_per_percent"
+                ),
+            },
+        },
+        windows=[
+            compact_window_v2(window)
+            for window in _mapping_rows(diagnostics.get("windows"))
+        ],
+        notes=notes,
+    )
+    if plan_comparison:
+        payload["plan_comparison"] = compact_plan_comparison(plan_comparison)
+    return payload
+
+
+def _compact_payload_base(
+    diagnostics: Mapping[str, object],
+    *,
+    schema: str,
+    generated_at: str,
+    include_archived: bool,
+    window_kind: str | None,
+    requested_limit: int | None,
+    coverage: AllowanceExportCoverage,
+    layout: Mapping[str, object],
+    windows: list[dict[str, object]],
+    notes: Sequence[str],
+) -> dict[str, object]:
     summary = diagnostics.get("summary")
     summary_mapping = summary if isinstance(summary, Mapping) else {}
-    windows = _mapping_rows(diagnostics.get("windows"))
-    payload: dict[str, object] = {
-        "schema": ALLOWANCE_EXPORT_COMPACT_SCHEMA,
+    return {
+        "schema": schema,
         "generated_at": generated_at,
         "privacy_mode": "strict",
         "request": {
@@ -80,31 +188,16 @@ def build_compact_allowance_export(
             "span_count": coverage.span_count,
             "truncated": coverage.truncated,
         },
-        "layout": {
-            "span_columns": list(SPAN_COLUMNS),
-            "conventions": {
-                "null_end_observed_date": "same_as_start_observed_date",
-                "delta_usage_percent": "end_used_percent - start_used_percent",
-                "credits_per_percent": "estimated_usage_credits / delta_usage_percent",
-                "confidence_override": "[zero_based_span_row_index, confidence]",
-                "after_to_before_ratio": (
-                    "after median completed-cycle credits_per_percent divided by "
-                    "before median completed-cycle credits_per_percent"
-                ),
-            },
-        },
+        "layout": dict(layout),
         "summary": {
             "primary_window_kind": summary_mapping.get("primary_window_kind"),
             "primary_evidence_grade": summary_mapping.get("primary_evidence_grade"),
             "candidate_change_count": summary_mapping.get("candidate_change_count", 0),
             "research_readiness": summary_mapping.get("research_readiness", {}),
         },
-        "windows": [compact_window(window) for window in windows],
+        "windows": windows,
         "notes": list(notes),
     }
-    if plan_comparison:
-        payload["plan_comparison"] = compact_plan_comparison(plan_comparison)
-    return payload
 
 
 def build_verbose_allowance_export(
@@ -131,15 +224,38 @@ def build_verbose_allowance_export(
     }
 
 
-def compact_window(window: Mapping[str, object]) -> dict[str, object]:
-    """Move invariant window facts out of individual span rows."""
+def compact_window(
+    window: Mapping[str, object], *, time_origin: str | None
+) -> dict[str, object]:
+    """Move invariant window facts out of v3 minute-offset span rows."""
 
     spans = _mapping_rows(window.get("spans"))
-    span_rows, span_confidence = compact_span_rows(spans)
+    span_rows, span_confidence = compact_span_rows(spans, time_origin=time_origin)
     candidates = [
-        _compact_candidate(candidate)
+        _compact_candidate(candidate, time_origin=time_origin)
         for candidate in _mapping_rows(window.get("change_candidates"))
     ]
+    return _compact_window_payload(window, span_rows, span_confidence, candidates)
+
+
+def compact_window_v2(window: Mapping[str, object]) -> dict[str, object]:
+    """Move invariant window facts out of v2 date-only span rows."""
+
+    spans = _mapping_rows(window.get("spans"))
+    span_rows, span_confidence = compact_span_rows_v2(spans)
+    candidates = [
+        _compact_candidate_v2(candidate)
+        for candidate in _mapping_rows(window.get("change_candidates"))
+    ]
+    return _compact_window_payload(window, span_rows, span_confidence, candidates)
+
+
+def _compact_window_payload(
+    window: Mapping[str, object],
+    span_rows: list[list[object]],
+    span_confidence: dict[str, object],
+    candidates: list[dict[str, object]],
+) -> dict[str, object]:
     return {
         "scope": {
             "window_kind": window.get("window_kind"),
@@ -157,15 +273,43 @@ def compact_window(window: Mapping[str, object]) -> dict[str, object]:
 
 
 def compact_span_rows(
-    spans: Sequence[Mapping[str, object]],
+    spans: Sequence[Mapping[str, object]], *, time_origin: str | None
 ) -> tuple[list[list[object]], dict[str, object]]:
-    """Encode repeated span objects as one column declaration plus rows."""
+    """Encode exact internal span timestamps as minute offsets for v3."""
 
     rows: list[list[object]] = []
     confidence_values: list[object] = []
     for span in spans:
-        start_date = span.get("start_observed_date")
-        end_date = span.get("end_observed_date")
+        start_minute = minute_offset(span.get("start_observed_at"), time_origin)
+        end_minute = minute_offset(span.get("end_observed_at"), time_origin)
+        rows.append(
+            [
+                start_minute,
+                None if end_minute == start_minute else end_minute,
+                span.get("start_used_percent"),
+                span.get("end_used_percent"),
+                span.get("estimated_usage_credits"),
+                span.get("row_count", 0),
+            ]
+        )
+        confidence_values.append(_normalized_confidence(span))
+    return rows, _compact_confidence(confidence_values)
+
+
+def compact_span_rows_v2(
+    spans: Sequence[Mapping[str, object]],
+) -> tuple[list[list[object]], dict[str, object]]:
+    """Encode date-only spans using the historical v2 layout."""
+
+    rows: list[list[object]] = []
+    confidence_values: list[object] = []
+    for span in spans:
+        start_date = span.get("start_observed_date") or _date_bucket(
+            span.get("start_observed_at")
+        )
+        end_date = span.get("end_observed_date") or _date_bucket(
+            span.get("end_observed_at")
+        )
         rows.append(
             [
                 start_date,
@@ -177,14 +321,17 @@ def compact_span_rows(
             ]
         )
         confidence_values.append(_normalized_confidence(span))
+    return rows, _compact_confidence(confidence_values)
 
-    default = _confidence_default(confidence_values)
+
+def _compact_confidence(values: Sequence[object]) -> dict[str, object]:
+    default = _confidence_default(values)
     overrides = [
         [index, confidence]
-        for index, confidence in enumerate(confidence_values)
+        for index, confidence in enumerate(values)
         if confidence != default
     ]
-    return rows, {"default": default, "overrides": overrides}
+    return {"default": default, "overrides": overrides}
 
 
 def compact_plan_comparison(
@@ -243,9 +390,33 @@ def _normalized_confidence(span: Mapping[str, object]) -> object:
     return mix
 
 
-def _compact_candidate(candidate: Mapping[str, object]) -> dict[str, object]:
-    payload = {
-        key: value
+def _compact_candidate(
+    candidate: Mapping[str, object], *, time_origin: str | None
+) -> dict[str, object]:
+    payload = _candidate_without_time_fields(candidate)
+    payload["candidate_start_minute"] = minute_offset(
+        candidate.get("candidate_start_observed_at"), time_origin
+    )
+    payload["candidate_end_minute"] = minute_offset(
+        candidate.get("candidate_end_observed_at"), time_origin
+    )
+    return payload
+
+
+def _compact_candidate_v2(candidate: Mapping[str, object]) -> dict[str, object]:
+    payload = _candidate_without_time_fields(candidate)
+    payload["candidate_start_observed_date"] = _date_bucket(
+        candidate.get("candidate_start_observed_at")
+    )
+    payload["candidate_end_observed_date"] = _date_bucket(
+        candidate.get("candidate_end_observed_at")
+    )
+    return payload
+
+
+def _candidate_without_time_fields(candidate: Mapping[str, object]) -> dict[str, object]:
+    return {
+        str(key): value
         for key, value in candidate.items()
         if key
         not in {
@@ -254,13 +425,40 @@ def _compact_candidate(candidate: Mapping[str, object]) -> dict[str, object]:
             "candidate_end_observed_at",
         }
     }
-    payload["candidate_start_observed_date"] = _date_bucket(
-        candidate.get("candidate_start_observed_at")
-    )
-    payload["candidate_end_observed_date"] = _date_bucket(
-        candidate.get("candidate_end_observed_at")
-    )
-    return payload
+
+
+def normalize_time_origin(value: object) -> str | None:
+    """Normalize one timestamp to a UTC minute ISO origin."""
+
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        return None
+    floored = parsed.replace(second=0, microsecond=0)
+    return floored.isoformat().replace("+00:00", "Z")
+
+
+def minute_offset(value: object, time_origin: object) -> int | None:
+    """Return a floored UTC-minute offset from the export-wide origin."""
+
+    timestamp = _parse_timestamp(value)
+    origin = _parse_timestamp(time_origin)
+    if timestamp is None or origin is None:
+        return None
+    timestamp = timestamp.replace(second=0, microsecond=0)
+    origin = origin.replace(second=0, microsecond=0)
+    return int((timestamp - origin).total_seconds() // 60)
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _verbose_window(window: Mapping[str, object]) -> dict[str, object]:
