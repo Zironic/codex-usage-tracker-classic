@@ -22,6 +22,10 @@ from codex_usage_tracker.pricing.allowance_rate_card import (
     parse_fast_multipliers,
     parse_rate_card_source,
 )
+from codex_usage_tracker.pricing.allowance_rate_history import (
+    CreditRateRevision,
+    parse_rate_revisions,
+)
 from codex_usage_tracker.pricing.allowance_text import allowance_line_matches
 
 __all__ = (
@@ -101,6 +105,8 @@ class UsageAllowanceConfig:
     rate_card_loaded: bool
     source: dict[str, Any]
     fast_multipliers: dict[str, FastMultiplierRate] = field(default_factory=dict)
+    rate_revisions: tuple[CreditRateRevision, ...] = ()
+    local_rate_models: frozenset[str] = frozenset()
     error: str | None = None
     rate_card_error: str | None = None
 
@@ -130,6 +136,10 @@ def load_allowance_config(
         base_card.get("credit_rates", {}), source=source, default_confidence="exact"
     )
     alias_metadata = parse_alias_metadata(base_card.get("aliases", {}), source=source)
+    rate_revisions = parse_rate_revisions(
+        base_card.get("rate_revisions"),
+        default_source=source,
+    )
     bundled_source = parse_rate_card_source(bundled_card)
     fast_multipliers = parse_fast_multipliers(
         bundled_card.get("fast_multipliers", {}), source=bundled_source
@@ -151,12 +161,15 @@ def load_allowance_config(
             rate_card_loaded=rate_card_loaded,
             source=source,
             fast_multipliers=fast_multipliers,
+            rate_revisions=rate_revisions,
             rate_card_error=rate_card_error,
         )
 
+    local_rate_models: frozenset[str] = frozenset()
     try:
         raw = load_json_file(path)
         local_rates = parse_credit_rates(raw.get("credit_rates", {}))
+        local_rate_models = frozenset(local_rates)
         credit_rates.update(local_rates)
         rate_metadata.update(
             parse_credit_rate_metadata(
@@ -206,6 +219,8 @@ def load_allowance_config(
             rate_card_loaded=rate_card_loaded,
             source=source,
             fast_multipliers=fast_multipliers,
+            rate_revisions=rate_revisions,
+            local_rate_models=local_rate_models,
             error=str(exc),
             rate_card_error=rate_card_error,
         )
@@ -222,6 +237,8 @@ def load_allowance_config(
         rate_card_loaded=rate_card_loaded,
         source=source,
         fast_multipliers=fast_multipliers,
+        rate_revisions=rate_revisions,
+        local_rate_models=local_rate_models,
         rate_card_error=rate_card_error,
     )
 
