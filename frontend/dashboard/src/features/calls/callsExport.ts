@@ -23,6 +23,18 @@ export type CallsExportScope = {
   sourceRevision: string;
 };
 
+type ResearchCallRow = CallRow & {
+  plan?: string;
+  rateRevision?: string;
+};
+
+type CompactCsvRow = {
+  call: CallRow;
+  plan: string;
+  rateRevision: string;
+  turnGroup: number | null;
+};
+
 const compactColumns = [
   'time_second',
   'thread',
@@ -30,6 +42,11 @@ const compactColumns = [
   'model',
   'rated_model',
   'effort',
+  'plan',
+  'rate_revision',
+  'fast',
+  'turn_group',
+  'subagent_type',
   'input_tokens',
   'cached_input_tokens',
   'output_tokens',
@@ -51,12 +68,16 @@ export function buildCompactCallsExport(
   generatedAt = new Date(),
 ): Record<string, unknown> {
   const originMs = earliestTimestamp(rows);
+  const turnGroups = new OpaqueGroupDictionary();
   const dictionaries = {
     threads: new StringDictionary(),
     projects: new StringDictionary(),
     models: new StringDictionary(),
     ratedModels: new StringDictionary(),
     efforts: new StringDictionary(),
+    plans: new StringDictionary(),
+    rateRevisions: new StringDictionary(),
+    subagentTypes: new StringDictionary(),
     creditConfidences: new StringDictionary(),
     initiators: new StringDictionary(),
     serviceTiers: new StringDictionary(),
@@ -64,6 +85,7 @@ export function buildCompactCallsExport(
   };
   const encodedRows = rows.map(row => {
     const timestamp = callTimestamp(row);
+    const research = researchFields(row);
     return [
       timestamp === null || originMs === null
         ? null
@@ -73,6 +95,11 @@ export function buildCompactCallsExport(
       dictionaries.models.index(row.model),
       dictionaries.ratedModels.index(row.usageCreditModel),
       dictionaries.efforts.index(row.effort),
+      dictionaries.plans.index(research.plan),
+      dictionaries.rateRevisions.index(research.rateRevision),
+      row.fast,
+      turnGroups.index(turnGroupKey(row)),
+      dictionaries.subagentTypes.index(row.subagentType),
       finiteNumber(row.input),
       finiteNumber(row.cachedInput),
       finiteNumber(row.output),
@@ -119,6 +146,8 @@ export function buildCompactCallsExport(
       conventions: {
         dictionary_index: 'zero-based index; null means unavailable',
         time_second: 'integer seconds from layout.time_origin',
+        turn_group: 'opaque file-local integer; original session and turn identifiers omitted',
+        fast: 'boolean when observed; null means unavailable',
         flags: 'array of zero-based indexes into dictionaries.flags',
         usage_credits: 'historically priced Codex credits when available',
       },
@@ -129,6 +158,9 @@ export function buildCompactCallsExport(
       models: dictionaries.models.values,
       rated_models: dictionaries.ratedModels.values,
       efforts: dictionaries.efforts.values,
+      plans: dictionaries.plans.values,
+      rate_revisions: dictionaries.rateRevisions.values,
+      subagent_types: dictionaries.subagentTypes.values,
       credit_confidences: dictionaries.creditConfidences.values,
       initiators: dictionaries.initiators.values,
       service_tiers: dictionaries.serviceTiers.values,
@@ -139,7 +171,17 @@ export function buildCompactCallsExport(
 }
 
 export function buildCompactCallsCsv(rows: CallRow[]): string {
-  return rowsToCsv(rows, compactCallCsvColumns);
+  const turnGroups = new OpaqueGroupDictionary();
+  const mapped = rows.map(call => {
+    const research = researchFields(call);
+    return {
+      call,
+      plan: research.plan,
+      rateRevision: research.rateRevision,
+      turnGroup: turnGroups.index(turnGroupKey(call)),
+    } satisfies CompactCsvRow;
+  });
+  return rowsToCsv(mapped, compactCallCsvColumns);
 }
 
 export function downloadText(
@@ -164,26 +206,31 @@ export function downloadText(
   }
 }
 
-const compactCallCsvColumns: Array<CsvColumn<CallRow>> = [
-  { header: 'timestamp', value: row => row.eventTimestamp || row.callStartedAt || row.rawTime },
-  { header: 'thread', value: row => row.thread },
-  { header: 'project', value: row => row.project },
-  { header: 'model', value: row => row.model },
-  { header: 'rated_model', value: row => row.usageCreditModel },
-  { header: 'effort', value: row => row.effort },
-  { header: 'input_tokens', value: row => row.input },
-  { header: 'cached_input_tokens', value: row => row.cachedInput },
-  { header: 'output_tokens', value: row => row.output },
-  { header: 'reasoning_output_tokens', value: row => row.reasoningOutput },
-  { header: 'total_tokens', value: row => row.totalTokens },
-  { header: 'usage_credits', value: row => numericCsv(row.credits, 6) },
-  { header: 'credit_confidence', value: row => row.usageCreditConfidence },
-  { header: 'duration_seconds', value: row => numericCsv(row.durationSeconds, 3) },
-  { header: 'previous_gap_seconds', value: row => numericCsv(row.previousCallGapSeconds, 3) },
-  { header: 'initiator', value: row => row.initiator },
-  { header: 'service_tier', value: row => row.serviceTier || row.usageCreditTier },
-  { header: 'context_window_percent', value: row => numericCsv(row.contextWindowPct, 3) },
-  { header: 'flags', value: row => callFlags(row).join('|') },
+const compactCallCsvColumns: Array<CsvColumn<CompactCsvRow>> = [
+  { header: 'timestamp', value: row => row.call.eventTimestamp || row.call.callStartedAt || row.call.rawTime },
+  { header: 'thread', value: row => row.call.thread },
+  { header: 'project', value: row => row.call.project },
+  { header: 'model', value: row => row.call.model },
+  { header: 'rated_model', value: row => row.call.usageCreditModel },
+  { header: 'effort', value: row => row.call.effort },
+  { header: 'plan', value: row => row.plan },
+  { header: 'rate_revision', value: row => row.rateRevision },
+  { header: 'fast', value: row => row.call.fast === null ? '' : String(row.call.fast) },
+  { header: 'turn_group', value: row => row.turnGroup ?? '' },
+  { header: 'subagent_type', value: row => row.call.subagentType },
+  { header: 'input_tokens', value: row => row.call.input },
+  { header: 'cached_input_tokens', value: row => row.call.cachedInput },
+  { header: 'output_tokens', value: row => row.call.output },
+  { header: 'reasoning_output_tokens', value: row => row.call.reasoningOutput },
+  { header: 'total_tokens', value: row => row.call.totalTokens },
+  { header: 'usage_credits', value: row => numericCsv(row.call.credits, 6) },
+  { header: 'credit_confidence', value: row => row.call.usageCreditConfidence },
+  { header: 'duration_seconds', value: row => numericCsv(row.call.durationSeconds, 3) },
+  { header: 'previous_gap_seconds', value: row => numericCsv(row.call.previousCallGapSeconds, 3) },
+  { header: 'initiator', value: row => row.call.initiator },
+  { header: 'service_tier', value: row => row.call.serviceTier || row.call.usageCreditTier },
+  { header: 'context_window_percent', value: row => numericCsv(row.call.contextWindowPct, 3) },
+  { header: 'flags', value: row => callFlags(row.call).join('|') },
 ];
 
 class StringDictionary {
@@ -200,6 +247,34 @@ class StringDictionary {
     this.indexes.set(normalized, index);
     return index;
   }
+}
+
+class OpaqueGroupDictionary {
+  private readonly indexes = new Map<string, number>();
+
+  index(value: string | null): number | null {
+    if (!value) return null;
+    const existing = this.indexes.get(value);
+    if (existing !== undefined) return existing;
+    const index = this.indexes.size;
+    this.indexes.set(value, index);
+    return index;
+  }
+}
+
+function researchFields(row: CallRow): { plan: string; rateRevision: string } {
+  const research = row as ResearchCallRow;
+  return {
+    plan: String(research.plan ?? ''),
+    rateRevision: String(research.rateRevision ?? ''),
+  };
+}
+
+function turnGroupKey(row: CallRow): string | null {
+  const turn = String(row.turnId ?? '').trim();
+  if (!turn) return null;
+  const session = String(row.sessionId ?? '').trim();
+  return session ? `${session}:${turn}` : turn;
 }
 
 function earliestTimestamp(rows: CallRow[]): number | null {
