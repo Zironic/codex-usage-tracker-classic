@@ -34,13 +34,6 @@ def new_model_state() -> dict[str, Any]:
     }
 
 
-def normalize_model_label(value: object) -> str:
-    """Return a visible stable model label, including whitespace-only values."""
-
-    label = str(value).strip() if value is not None else ""
-    return label or "Unknown model"
-
-
 def record_model_call(
     state: dict[str, Any],
     row: dict[str, Any],
