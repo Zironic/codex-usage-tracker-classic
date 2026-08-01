@@ -16,10 +16,17 @@
 .definitionList dt { color: var(--ink-muted); font-size: 11px; }
 .definitionList dd { margin: 0; color: var(--ink-strong); font-weight: 750; font-variant-numeric: tabular-nums; }
 .note { margin-bottom: 0; color: var(--ink-muted); font-size: 12px; }
+.chartHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.chartHeader h2, .chartHeader p { margin-top: 0; }
+.chartControls { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .bars { display: flex; align-items: end; gap: 4px; height: 180px; overflow-x: auto; padding-top: 10px; }
 .barColumn { display: grid; grid-template-rows: 1fr auto; align-items: end; min-width: 22px; height: 100%; }
-.bar { width: 100%; min-height: 2px; background: var(--signal-selection); border-radius: 4px 4px 0 0; }
+.bar { width: 100%; background: var(--signal-selection); border-radius: 4px 4px 0 0; }
 .barColumn span { margin-top: 5px; color: var(--ink-muted); font-size: 9px; writing-mode: vertical-rl; }
+.hourlyBars { gap: 1px; }
+.hourlyBars .barColumn { min-width: 5px; }
+.hourlyBars .barColumn span { min-height: 34px; overflow: visible; white-space: nowrap; writing-mode: horizontal-tb; }
+.hourlyBars .barColumn span:empty { visibility: hidden; }
 .tableWrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { padding: 9px 10px; border-bottom: 1px solid var(--line-subtle); text-align: right; font-variant-numeric: tabular-nums; }
@@ -28,5 +35,5 @@ th:first-child, td:first-child { text-align: left; }
 .listRow, .callRow { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 0; border: 0; border-bottom: 1px solid var(--line-subtle); background: none; color: var(--ink); text-align: left; }
 .callRow { cursor: pointer; }
 .listRow strong, .callRow strong { color: var(--ink-strong); font-variant-numeric: tabular-nums; white-space: nowrap; }
-@media (max-width: 900px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid { grid-template-columns: 1fr; } .chartHeader { flex-direction: column; } .chartControls { justify-content: flex-start; } }
 @media (max-width: 620px) { .header { flex-direction: column; } .cards { grid-template-columns: 1fr; } .controls { align-items: stretch; flex-direction: column; } .controls select { width: 100%; } }
