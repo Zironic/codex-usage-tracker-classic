@@ -45,6 +45,11 @@ with_vs_without_median_drain_ratio
 installed
 recommended_refresh_action
 
+# HTMLParser invokes these callback overrides dynamically.
+_.handle_starttag
+_.handle_endtag
+_.handle_data
+
 # HTTP handlers are selected by BaseHTTPRequestHandler or route dispatch maps.
 _.do_POST
 _._handle_diagnostics_summary
