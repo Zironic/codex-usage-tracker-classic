@@ -10,9 +10,16 @@ import {
 import type { ContextRuntime } from '../../api/types';
 import type { HistoryScope } from '../../data/dataScope';
 import { Button, SegmentedControl, StatusBadge, Surface } from '../../design';
+import { ModelStatisticsTable } from './ModelStatisticsTable';
 import styles from './StatisticsPage.module.css';
 
-const ranges = [7, 30, 90, 365] as const;
+const rangeOptions = [
+  { value: 1, label: 'Last 24 hours' },
+  { value: 7, label: '7 days' },
+  { value: 30, label: '30 days' },
+  { value: 90, label: '90 days' },
+  { value: 365, label: '365 days' },
+] as const;
 type ChartGranularity = 'day' | 'hour';
 type ChartMetric = 'credits' | 'calls';
 
@@ -33,6 +40,7 @@ export function StatisticsPage({
 }) {
   const [days, setDays] = useState<number | 'all'>(30);
   const [model, setModel] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [sessionGap, setSessionGap] = useState(30);
   const [granularity, setGranularity] = useState<ChartGranularity>('day');
   const [metric, setMetric] = useState<ChartMetric>('credits');
@@ -70,7 +78,18 @@ export function StatisticsPage({
     retry: 1,
   });
   const payload = query.data;
-  const models = payload?.model_rows ?? [];
+
+  useEffect(() => {
+    if (model || !payload?.model_rows) return;
+    setAvailableModels(payload.model_rows.map(row => row.model));
+  }, [model, payload?.model_rows]);
+
+  function updateRange(value: string) {
+    const next = value === 'all' ? 'all' : Number(value);
+    setDays(next);
+    if (next === 1) setGranularity('hour');
+    if (next === 'all' || next > 30) setGranularity('day');
+  }
 
   return (
     <div className={styles.page}>
@@ -87,23 +106,18 @@ export function StatisticsPage({
 
       <Surface className={styles.controls}>
         <label>Range
-          <select
-            value={String(days)}
-            onChange={event => setDays(event.target.value === 'all'
-              ? 'all'
-              : Number(event.target.value))}
-          >
-            {ranges.map(value => <option key={value} value={value}>{value} days</option>)}
+          <select value={String(days)} onChange={event => updateRange(event.target.value)}>
+            {rangeOptions.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
             <option value="all">All time</option>
           </select>
         </label>
         <label>Model
           <select value={model} onChange={event => setModel(event.target.value)}>
             <option value="">All models</option>
-            {models.map(row => (
-              <option key={String(row.model)} value={String(row.model)}>
-                {String(row.model)}
-              </option>
+            {availableModels.map(value => (
+              <option key={value} value={value}>{modelLabel(value)}</option>
             ))}
           </select>
         </label>
@@ -117,6 +131,9 @@ export function StatisticsPage({
             ))}
           </select>
         </label>
+        {model ? (
+          <Button variant="ghost" onClick={() => setModel('')}>Clear model filter</Button>
+        ) : null}
         <StatusBadge tone={payload?.data_state === 'ready' ? 'positive' : 'caution'}>
           {query.isFetching
             ? 'Updating'
@@ -149,6 +166,8 @@ export function StatisticsPage({
           metric={metric}
           onMetricChange={setMetric}
           hourlyRangeAvailable={hourlyRangeAvailable}
+          activeModel={model}
+          onSelectModel={setModel}
         />
       ) : null}
     </div>
@@ -163,6 +182,8 @@ function StatisticsContent({
   metric,
   onMetricChange,
   hourlyRangeAvailable,
+  activeModel,
+  onSelectModel,
 }: {
   payload: StatisticsPayload;
   onOpen: (id: string) => void;
@@ -171,6 +192,8 @@ function StatisticsContent({
   metric: ChartMetric;
   onMetricChange: (value: ChartMetric) => void;
   hourlyRangeAvailable: boolean;
+  activeModel: string;
+  onSelectModel: (model: string) => void;
 }) {
   const headline = payload.headline ?? {};
   const distribution = payload.distribution ?? {};
@@ -258,11 +281,7 @@ function StatisticsContent({
               onValueChange={onGranularityChange}
               options={[
                 { label: 'Daily', value: 'day' },
-                {
-                  label: 'Hourly',
-                  value: 'hour',
-                  disabled: !hourlyAvailable,
-                },
+                { label: 'Hourly', value: 'hour', disabled: !hourlyAvailable },
               ]}
             />
             <SegmentedControl
@@ -277,7 +296,9 @@ function StatisticsContent({
           </div>
         </div>
         {!hourlyRangeAvailable ? (
-          <p className={styles.note}>Hourly view is available for 7- and 30-day ranges.</p>
+          <p className={styles.note}>
+            Hourly view is available for Last 24 hours, 7-day, and 30-day ranges.
+          </p>
         ) : null}
         <div
           className={`${styles.bars} ${activeGranularity === 'hour' ? styles.hourlyBars : ''}`}
@@ -302,31 +323,11 @@ function StatisticsContent({
       </Surface>
 
       <Surface>
-        <h2>Models</h2>
-        <div className={styles.tableWrap}>
-          <table>
-            <thead>
-              <tr>
-                <th>Model</th><th>Calls</th><th>Credits</th><th>Mean</th>
-                <th>Median</th><th>P90</th><th>P95</th><th>Coverage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(payload.model_rows ?? []).map(row => (
-                <tr key={String(row.model)}>
-                  <td><button className={styles.linkButton}>{String(row.model)}</button></td>
-                  <td>{integer(row.calls)}</td>
-                  <td>{number(row.known_credits)}</td>
-                  <td>{number(row.mean)}</td>
-                  <td>{number(row.median)}</td>
-                  <td>{number(row.p90)}</td>
-                  <td>{number(row.p95)}</td>
-                  <td>{percent(row.priced_call_ratio)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ModelStatisticsTable
+          rows={payload.model_rows ?? []}
+          activeModel={activeModel}
+          onSelectModel={onSelectModel}
+        />
       </Surface>
 
       <section className={styles.grid}>
@@ -388,8 +389,17 @@ function Metric({ label: text, value }: { label: string; value: string }) {
 
 function dateRange(days: number | 'all') {
   const until = new Date();
-  const since = new Date(days === 'all' ? 0 : until.getTime() - (days - 1) * 86_400_000);
-  if (days !== 'all') since.setHours(0, 0, 0, 0);
+  if (days === 'all') {
+    return { since: new Date(0).toISOString(), until: until.toISOString() };
+  }
+  if (days === 1) {
+    return {
+      since: new Date(until.getTime() - 86_400_000).toISOString(),
+      until: until.toISOString(),
+    };
+  }
+  const since = new Date(until.getTime() - (days - 1) * 86_400_000);
+  since.setHours(0, 0, 0, 0);
   return { since: since.toISOString(), until: until.toISOString() };
 }
 
@@ -429,20 +439,30 @@ function axisLabel(
 }
 
 function number(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed)
-    ? parsed.toLocaleString(undefined, { maximumFractionDigits: 2 })
-    : '—';
+  const parsed = finiteNumber(value);
+  return parsed === null
+    ? '—'
+    : parsed.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function integer(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.round(parsed).toLocaleString() : '—';
+  const parsed = finiteNumber(value);
+  return parsed === null ? '—' : Math.round(parsed).toLocaleString();
 }
 
 function percent(value: unknown) {
+  const parsed = finiteNumber(value);
+  return parsed === null ? '—' : `${(parsed * 100).toFixed(1)}%`;
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? `${(parsed * 100).toFixed(1)}%` : '—';
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function modelLabel(value: string): string {
+  return value.trim() || 'Unknown model';
 }
 
 function label(value: string) {
