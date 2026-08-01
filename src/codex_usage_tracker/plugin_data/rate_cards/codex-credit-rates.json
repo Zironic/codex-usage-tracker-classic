@@ -1,40 +1,40 @@
 {
   "schema": "codex-usage-tracker-codex-rate-card-v1",
-  "version": "2026-07-09",
+  "version": "2026-08-01",
   "source": {
     "name": "OpenAI Codex rate card",
-    "url": "https://developers.openai.com/codex/pricing",
-    "pricing_url": "https://developers.openai.com/codex/pricing",
-    "fetched_at": "2026-07-09",
+    "url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+    "pricing_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+    "fetched_at": "2026-08-01T06:43:00Z",
     "basis": "credits per 1M input, cached input, and output tokens",
     "tier": "standard"
   },
   "credit_rates": {
     "gpt-5.6-sol": {
-      "input_per_million": 250.0,
-      "cached_input_per_million": 25.0,
-      "output_per_million": 1500.0,
+      "input_per_million": 125.0,
+      "cached_input_per_million": 12.5,
+      "output_per_million": 750.0,
       "confidence": "exact",
-      "source_url": "https://developers.openai.com/codex/pricing",
-      "fetched_at": "2026-07-09",
+      "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+      "fetched_at": "2026-08-01T06:43:00Z",
       "tier": "standard"
     },
     "gpt-5.6-terra": {
-      "input_per_million": 125.0,
-      "cached_input_per_million": 12.5,
-      "output_per_million": 125.0,
-      "confidence": "exact",
-      "source_url": "https://developers.openai.com/codex/pricing",
-      "fetched_at": "2026-07-09",
-      "tier": "standard"
-    },
-    "gpt-5.6-luna": {
       "input_per_million": 50.0,
       "cached_input_per_million": 5.0,
       "output_per_million": 300.0,
       "confidence": "exact",
-      "source_url": "https://developers.openai.com/codex/pricing",
-      "fetched_at": "2026-07-09",
+      "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+      "fetched_at": "2026-08-01T06:43:00Z",
+      "tier": "standard"
+    },
+    "gpt-5.6-luna": {
+      "input_per_million": 5.0,
+      "cached_input_per_million": 0.5,
+      "output_per_million": 30.0,
+      "confidence": "exact",
+      "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+      "fetched_at": "2026-08-01T06:43:00Z",
       "tier": "standard"
     },
     "gpt-5.5": {
@@ -42,8 +42,17 @@
       "cached_input_per_million": 12.5,
       "output_per_million": 750.0,
       "confidence": "exact",
-      "source_url": "https://developers.openai.com/codex/pricing",
-      "fetched_at": "2026-07-09",
+      "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+      "fetched_at": "2026-08-01T06:43:00Z",
+      "tier": "standard"
+    },
+    "gpt-5.5-cyber": {
+      "input_per_million": 312.5,
+      "cached_input_per_million": 31.25,
+      "output_per_million": 1875.0,
+      "confidence": "exact",
+      "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+      "fetched_at": "2026-08-01T06:43:00Z",
       "tier": "standard"
     },
     "gpt-5.4": {
@@ -51,8 +60,8 @@
       "cached_input_per_million": 6.25,
       "output_per_million": 375.0,
       "confidence": "exact",
-      "source_url": "https://developers.openai.com/codex/pricing",
-      "fetched_at": "2026-07-09",
+      "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+      "fetched_at": "2026-08-01T06:43:00Z",
       "tier": "standard"
     },
     "gpt-5.4-mini": {
@@ -60,8 +69,8 @@
       "cached_input_per_million": 1.875,
       "output_per_million": 113.0,
       "confidence": "exact",
-      "source_url": "https://developers.openai.com/codex/pricing",
-      "fetched_at": "2026-07-09",
+      "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+      "fetched_at": "2026-08-01T06:43:00Z",
       "tier": "standard"
     },
     "gpt-5.3-codex": {
@@ -70,7 +79,7 @@
       "output_per_million": 350.0,
       "confidence": "exact",
       "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
-      "fetched_at": "2026-06-03",
+      "fetched_at": "2026-08-01T06:43:00Z",
       "tier": "standard"
     },
     "gpt-5.2": {
@@ -79,10 +88,170 @@
       "output_per_million": 350.0,
       "confidence": "exact",
       "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
-      "fetched_at": "2026-06-03",
+      "fetched_at": "2026-08-01T06:43:00Z",
       "tier": "standard"
     }
   },
+  "rate_revisions": [
+    {
+      "revision_id": "2026-07-09-bundled-baseline",
+      "effective_at": null,
+      "effective_at_precision": "unknown",
+      "source": {
+        "name": "OpenAI Codex rate card",
+        "url": "https://developers.openai.com/codex/pricing",
+        "pricing_url": "https://developers.openai.com/codex/pricing",
+        "fetched_at": "2026-07-09",
+        "basis": "credits per 1M input, cached input, and output tokens",
+        "tier": "standard",
+        "note": "Undated baseline preserves the previously bundled rates for events before the timestamped August revision."
+      },
+      "credit_rates": {
+        "gpt-5.6-sol": {
+          "input_per_million": 250.0,
+          "cached_input_per_million": 25.0,
+          "output_per_million": 1500.0,
+          "confidence": "exact",
+          "source_url": "https://developers.openai.com/codex/pricing",
+          "fetched_at": "2026-07-09",
+          "tier": "standard"
+        },
+        "gpt-5.6-terra": {
+          "input_per_million": 125.0,
+          "cached_input_per_million": 12.5,
+          "output_per_million": 125.0,
+          "confidence": "exact",
+          "source_url": "https://developers.openai.com/codex/pricing",
+          "fetched_at": "2026-07-09",
+          "tier": "standard"
+        },
+        "gpt-5.6-luna": {
+          "input_per_million": 50.0,
+          "cached_input_per_million": 5.0,
+          "output_per_million": 300.0,
+          "confidence": "exact",
+          "source_url": "https://developers.openai.com/codex/pricing",
+          "fetched_at": "2026-07-09",
+          "tier": "standard"
+        },
+        "gpt-5.5": {
+          "input_per_million": 125.0,
+          "cached_input_per_million": 12.5,
+          "output_per_million": 750.0,
+          "confidence": "exact",
+          "source_url": "https://developers.openai.com/codex/pricing",
+          "fetched_at": "2026-07-09",
+          "tier": "standard"
+        },
+        "gpt-5.4": {
+          "input_per_million": 62.5,
+          "cached_input_per_million": 6.25,
+          "output_per_million": 375.0,
+          "confidence": "exact",
+          "source_url": "https://developers.openai.com/codex/pricing",
+          "fetched_at": "2026-07-09",
+          "tier": "standard"
+        },
+        "gpt-5.4-mini": {
+          "input_per_million": 18.75,
+          "cached_input_per_million": 1.875,
+          "output_per_million": 113.0,
+          "confidence": "exact",
+          "source_url": "https://developers.openai.com/codex/pricing",
+          "fetched_at": "2026-07-09",
+          "tier": "standard"
+        },
+        "gpt-5.3-codex": {
+          "input_per_million": 43.75,
+          "cached_input_per_million": 4.375,
+          "output_per_million": 350.0,
+          "confidence": "exact",
+          "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+          "fetched_at": "2026-06-03",
+          "tier": "standard"
+        },
+        "gpt-5.2": {
+          "input_per_million": 43.75,
+          "cached_input_per_million": 4.375,
+          "output_per_million": 350.0,
+          "confidence": "exact",
+          "source_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+          "fetched_at": "2026-06-03",
+          "tier": "standard"
+        }
+      }
+    },
+    {
+      "revision_id": "2026-08-01-official-rate-card",
+      "effective_at": "2026-08-01T00:00:00Z",
+      "effective_at_precision": "day",
+      "source": {
+        "name": "OpenAI Codex rate card",
+        "url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+        "pricing_url": "https://help.openai.com/en/articles/20001106-codex-rate-card",
+        "fetched_at": "2026-08-01T06:43:00Z",
+        "basis": "credits per 1M input, cached input, and output tokens",
+        "tier": "standard",
+        "note": "OpenAI published the changed rates on August 1, 2026 but did not publish an exact rollout timestamp; midnight UTC is a date-precision boundary."
+      },
+      "credit_rates": {
+        "gpt-5.6-sol": {
+          "input_per_million": 125.0,
+          "cached_input_per_million": 12.5,
+          "output_per_million": 750.0,
+          "confidence": "exact"
+        },
+        "gpt-5.6-terra": {
+          "input_per_million": 50.0,
+          "cached_input_per_million": 5.0,
+          "output_per_million": 300.0,
+          "confidence": "exact"
+        },
+        "gpt-5.6-luna": {
+          "input_per_million": 5.0,
+          "cached_input_per_million": 0.5,
+          "output_per_million": 30.0,
+          "confidence": "exact"
+        },
+        "gpt-5.5": {
+          "input_per_million": 125.0,
+          "cached_input_per_million": 12.5,
+          "output_per_million": 750.0,
+          "confidence": "exact"
+        },
+        "gpt-5.5-cyber": {
+          "input_per_million": 312.5,
+          "cached_input_per_million": 31.25,
+          "output_per_million": 1875.0,
+          "confidence": "exact"
+        },
+        "gpt-5.4": {
+          "input_per_million": 62.5,
+          "cached_input_per_million": 6.25,
+          "output_per_million": 375.0,
+          "confidence": "exact"
+        },
+        "gpt-5.4-mini": {
+          "input_per_million": 18.75,
+          "cached_input_per_million": 1.875,
+          "output_per_million": 113.0,
+          "confidence": "exact"
+        },
+        "gpt-5.3-codex": {
+          "input_per_million": 43.75,
+          "cached_input_per_million": 4.375,
+          "output_per_million": 350.0,
+          "confidence": "exact"
+        },
+        "gpt-5.2": {
+          "input_per_million": 43.75,
+          "cached_input_per_million": 4.375,
+          "output_per_million": 350.0,
+          "confidence": "exact"
+        }
+      }
+    }
+  ],
   "fast_multipliers": {
     "gpt-5.6": {
       "multiplier": 2.5,
