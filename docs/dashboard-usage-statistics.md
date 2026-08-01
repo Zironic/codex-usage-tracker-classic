@@ -14,6 +14,10 @@ The dashboard sends inclusive `since` and exclusive `until` timestamps plus the 
 
 The All time preset queries the full stored range but clamps calendar-day and elapsed-hour denominators to the first matching call.
 
+The usage graph supports Daily and Hourly views. Hourly data is returned only for ranges of 30 elapsed days or less, which currently corresponds to the 7-day and 30-day dashboard presets. Longer ranges automatically use Daily view. The hourly series contains one zero-filled point per elapsed UTC hour and includes each point's local offset timestamp. A spring daylight-saving transition therefore has 23 local-day points, while a fall transition has 25 and preserves both repeated local hours.
+
+The graph can display either known credits or call count without requesting the statistics again.
+
 ## Definitions
 
 - **Mean credits per priced call:** known credits divided by priced calls.
