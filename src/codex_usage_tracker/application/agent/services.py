@@ -12,6 +12,10 @@ from codex_usage_tracker.application.allowance import get_allowance
 from codex_usage_tracker.application.allowance_models import AllowanceRequest
 from codex_usage_tracker.application.analyze import AnalysisRuntime, analyze_usage
 from codex_usage_tracker.application.context import build_request_context
+from codex_usage_tracker.application.delegation_efficiency import (
+    DelegationEfficiencyRequest,
+    build_delegation_efficiency,
+)
 from codex_usage_tracker.application.evidence import get_evidence
 from codex_usage_tracker.application.job_status import get_job_status
 from codex_usage_tracker.application.query import query_usage
@@ -274,6 +278,13 @@ class AgentApplicationServices:
             db_path=self.db_path,
             pricing_path=self.pricing_path,
             allowance_path=self.allowance_path,
+        )
+
+    def delegation_efficiency(self, request: DelegationEfficiencyRequest) -> object:
+        return build_delegation_efficiency(
+            request,
+            db_path=self.db_path,
+            pricing_path=self.pricing_path,
         )
 
     def evidence(self, request: EvidenceRequest) -> object:

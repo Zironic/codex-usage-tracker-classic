@@ -333,6 +333,29 @@ def _allowance_specs() -> tuple[OperationSpec, ...]:
     )
 
 
+def _delegation_specs() -> tuple[OperationSpec, ...]:
+    """Stable aggregate-only delegation observations."""
+
+    return (
+        _spec(
+            "delegation.efficiency.query",
+            "Read descriptive direct and role-observed delegation resource cohorts.",
+            owner="application.delegation_efficiency",
+            authorization_scope="aggregate_read",
+            execution="synchronous",
+            result_schema="codex-usage-tracker.delegation-efficiency.v1",
+            request_suffix="delegation-efficiency-query",
+            maturity="experimental",
+            lifecycle="active",
+            pagination="none",
+            may_scan_all_history=True,
+            row_limit=100,
+            enabled=True,
+            default_enabled=True,
+        ),
+    )
+
+
 _PLANNED_OPERATIONS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("system.doctor", "Read sanitized installation and environment health.", "application.doctor", "system_doctor", ("usage_doctor",)),
     ("system.coverage", "Read pricing, credit, source, parser, and tier coverage.", "reports.coverage", "system_coverage", ("usage_pricing_coverage", "usage_source_coverage")),
@@ -472,6 +495,14 @@ _OPERATION_ARGUMENT_FIELDS: Mapping[str, tuple[str, ...]] = {
     ),
     "allowance.diagnostics": ("include_archived", "window_kind", "limit"),
     "allowance.export": ("include_archived", "window_kind", "limit"),
+    "delegation.efficiency.query": (
+        "since",
+        "until",
+        "adoption_at",
+        "parent_thread",
+        "include_archived",
+        "limit",
+    ),
 }
 
 
@@ -520,7 +551,10 @@ def _planned_specs() -> tuple[OperationSpec, ...]:
 
 OPERATION_CATALOG: tuple[OperationSpec, ...] = tuple(
     replace(item, argument_fields=_OPERATION_ARGUMENT_FIELDS.get(item.name, ()))
-    for item in sorted((*_core_specs(), *_allowance_specs(), *_planned_specs()), key=lambda item: item.name)
+    for item in sorted(
+        (*_core_specs(), *_allowance_specs(), *_delegation_specs(), *_planned_specs()),
+        key=lambda item: item.name,
+    )
 )
 AGENT_OPERATION_CATALOG = OPERATION_CATALOG
 CATALOG = OPERATION_CATALOG

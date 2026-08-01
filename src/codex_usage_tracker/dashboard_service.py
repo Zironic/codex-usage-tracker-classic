@@ -17,6 +17,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 DEFAULT_SERVICE_PORT = 47821
+DEFAULT_FOREGROUND_PORT = 8765
 SERVICE_HOST = "127.0.0.1"
 SERVICE_LABEL = "com.codex-usage-tracker.dashboard"
 
@@ -207,10 +208,20 @@ def dashboard_service_status(
     uid: int | None = None,
     runner: Runner = subprocess.run,
     reachable: Callable[[int], bool] = dashboard_is_reachable,
+    foreground_port: int = DEFAULT_FOREGROUND_PORT,
 ) -> DashboardServiceStatus:
     """Inspect managed plist, launchd state, and localhost reachability."""
 
-    _require_macos(platform)
+    if platform != "darwin":
+        validate_service_port(foreground_port)
+        healthy = reachable(foreground_port)
+        return DashboardServiceStatus(
+            False,
+            False,
+            healthy,
+            foreground_port,
+            "healthy" if healthy else "no dashboard detected; persistent install is macOS only",
+        )
     paths = service_paths(home)
     target_uid = os.getuid() if uid is None else uid
     loaded = _is_loaded(target_uid, runner)

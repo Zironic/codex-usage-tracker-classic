@@ -9,6 +9,7 @@ import {
   readExploreMode,
   type ExploreMode,
 } from './exploreState';
+import { LunaEfficiencyCard } from './LunaEfficiencyCard';
 import styles from './ExplorePage.module.css';
 
 export type ExplorePageProps = CallsPageProps & {
@@ -120,6 +121,12 @@ export function ExplorePage(props: ExplorePageProps) {
           </div>
         </div>
       </section>
+      <LunaEfficiencyCard
+        contextRuntime={props.contextRuntime}
+        includeArchived={props.includeArchived}
+        scopeSince={props.scopeSince}
+        sourceRevision={props.sourceRevision}
+      />
       <div
         aria-labelledby={`explore-${mode}-tab`}
         className={styles.panel}

@@ -8,6 +8,9 @@ from typing import Any, cast
 
 from codex_usage_tracker.analytics.analysis_models import AnalysisRequest, ComparisonWindow
 from codex_usage_tracker.application.allowance_models import AllowanceRequest
+from codex_usage_tracker.application.delegation_efficiency import (
+    DelegationEfficiencyRequest,
+)
 from codex_usage_tracker.application.errors import ApplicationError
 from codex_usage_tracker.application.query_models import QueryFilters, QueryRequest
 from codex_usage_tracker.application.requests import (
@@ -145,6 +148,10 @@ class AgentDispatcher:
             )
         if operation == "usage.query":
             return self.services.query(_query_request(args, scope))
+        if operation == "delegation.efficiency.query":
+            return self.services.delegation_efficiency(
+                _delegation_efficiency_request(args, scope, request.privacy_mode)
+            )
         if operation == "analysis.run":
             return self.services.analyze(_analysis_request(args, scope, request.execution))
         if operation == "evidence.get":
@@ -369,10 +376,70 @@ def _allowance_request(operation: str, args: Mapping[str, object], execution: st
     return AllowanceRequest(**values)  # type: ignore[arg-type]
 
 
+def _delegation_efficiency_request(
+    args: Mapping[str, object], scope: RequestScope, privacy_mode: str
+) -> DelegationEfficiencyRequest:
+    values = dict(args)
+    since_arg = values.pop("since", None)
+    since = _optional_str(since_arg, "since")
+    if since is not None and scope.since is not None and since != scope.since:
+        raise ValueError("delegation efficiency since conflicts with scope.since")
+    if since is None:
+        since = scope.since
+    until_arg = values.pop("until", None)
+    until = _optional_str(until_arg, "until")
+    if until is not None and scope.until is not None and until != scope.until:
+        raise ValueError("delegation efficiency until conflicts with scope.until")
+    if until is None:
+        until = scope.until
+    unsupported_scope = next(
+        (
+            name
+            for name in ("project", "thread_key", "model", "effort")
+            if getattr(scope, name) is not None
+        ),
+        None,
+    )
+    if unsupported_scope is not None:
+        raise ValueError(f"unsupported delegation efficiency scope: {unsupported_scope}")
+    request = DelegationEfficiencyRequest(
+        since=since,
+        until=until,
+        adoption_at=_optional_str(values.pop("adoption_at", None), "adoption_at"),
+        parent_thread=_optional_str(values.pop("parent_thread", None), "parent_thread"),
+        include_archived=_bool(
+            values.pop("include_archived", scope.history == "all"), "include_archived"
+        ),
+        limit=_bounded_int(values.pop("limit", 10), "limit", 1, 100),
+        privacy_mode=privacy_mode,
+    )
+    _no_arguments(values)
+    return request
+
+
 def _bool(value: object, field_name: str) -> bool:
     if type(value) is not bool:
         raise ValueError(f"{field_name} must be a bool")
     return cast(bool, value)
+
+
+def _optional_str(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value
+
+
+def _bounded_int(value: object, field_name: str, minimum: int, maximum: int) -> int:
+    if type(value) is not int or not minimum <= cast(int, value) <= maximum:
+        raise ValueError(f"{field_name} must be between {minimum} and {maximum}")
+    return cast(int, value)
+
+
+def _no_arguments(arguments: Mapping[str, object]) -> None:
+    if arguments:
+        raise ValueError(f"unsupported argument: {sorted(arguments)[0]}")
 
 
 def _first_mapping(payload: Mapping[str, object], *keys: str) -> Mapping[str, object]:

@@ -28,6 +28,7 @@ from codex_usage_tracker.parser.jsonl_values import (
     required_usage_int,
     session_id_from_path,
     session_metadata,
+    unidentified_session_id,
 )
 from codex_usage_tracker.parser.state import ParserState, optional_str
 
@@ -286,14 +287,17 @@ def _handle_token_count_event(
         increment_stat(stats, "duplicate_cumulative_total")
         return
 
-    effective_session_id = state.session_id or "unknown"
-    state.session_info = state.session_info or index.get(effective_session_id)
+    session_id_known = int(bool(state.session_id and state.session_id.strip()))
+    effective_session_id = state.session_id or unidentified_session_id(path)
+    if session_id_known:
+        state.session_info = state.session_info or index.get(effective_session_id)
     event = _build_token_count_event(
         path=path,
         line_number=line_number,
         timestamp=timestamp,
         envelope=envelope,
         session_id=effective_session_id,
+        session_id_known=session_id_known,
         session_info=state.session_info,
         session_meta=state.session_meta,
         current_turn=state.current_turn,
@@ -429,6 +433,7 @@ def _build_token_count_event(
     timestamp: str,
     envelope: dict[str, Any],
     session_id: str,
+    session_id_known: int,
     session_info: SessionInfo | None,
     session_meta: dict[str, str | None],
     current_turn: dict[str, Any],
@@ -445,6 +450,7 @@ def _build_token_count_event(
             line_number=line_number,
             event_timestamp=timestamp,
             session_id=session_id,
+            session_id_known=session_id_known,
             session_info=session_info,
             session_meta=session_meta,
             current_turn=current_turn,

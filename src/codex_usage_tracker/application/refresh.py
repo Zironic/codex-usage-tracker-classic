@@ -24,7 +24,7 @@ from codex_usage_tracker.jobs.adapters import RefreshJobAdapter, request_hash
 from codex_usage_tracker.jobs.models import JobStatusV1
 from codex_usage_tracker.jobs.service import JobService
 from codex_usage_tracker.parser.api import find_session_logs
-from codex_usage_tracker.store.api import refresh_usage_index
+from codex_usage_tracker.recommendation_engine.api import refresh_usage_index
 from codex_usage_tracker.store.sources import source_logs_requiring_parse
 
 MAX_SYNC_SOURCE_FILES = 4
@@ -236,11 +236,16 @@ def refresh_usage(
     lock = _refresh_lock(db_path)
 
     def execute(plan: RefreshPlan) -> dict[str, object]:
+        refresh_kwargs: dict[str, object] = {
+            "codex_home": codex_home,
+            "db_path": db_path,
+            "include_archived": request.history == "all",
+            "aggregate_only": request.aggregate_only,
+        }
+        if refresh_fn is refresh_usage_index:
+            refresh_kwargs["pricing_path"] = pricing_path
         result = refresh_fn(
-            codex_home=codex_home,
-            db_path=db_path,
-            include_archived=request.history == "all",
-            aggregate_only=request.aggregate_only,
+            **refresh_kwargs,
         )
         return _completed_payload(request, result, plan, db_path, pricing_path)
 

@@ -19,7 +19,7 @@ from codex_usage_tracker.core.schema import (
     USAGE_EVENT_SCHEMA_CHECKSUM,
 )
 
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 MIGRATION_NAMES = {
     1: "create usage_events aggregate fact table",
     2: "track schema migration checksum metadata",
@@ -41,6 +41,7 @@ MIGRATION_NAMES = {
     **deduplication_schema.MIGRATION_NAMES,
     **allowance_schema.MIGRATION_NAMES,
     **otel_schema.MIGRATION_NAMES,
+    35: "persist session-id provenance",
 }
 CALL_ORIGIN_REPAIR_COLUMNS: dict[str, str] = dict.fromkeys(
     ("call_initiator", "call_initiator_reason", "call_initiator_confidence"), "TEXT"
@@ -123,6 +124,7 @@ def _schema_migrations() -> tuple[tuple[int, Callable[[sqlite3.Connection], None
         (32, allowance_schema.add_allowance_all_history_query_index),
         (33, recommendation_schema.create_recommendation_fact_indexes),
         (34, _migrate_v34),
+        (35, _migrate_v35),
     )
 
 
@@ -207,6 +209,21 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
 def _migrate_v34(conn: sqlite3.Connection) -> None:
     recommendation_schema.create_recommendation_fact_indexes(conn)
     schema_query_indexes.add_call_explorer_parent_lookup_indexes(conn)
+
+
+def _migrate_v35(conn: sqlite3.Connection) -> None:
+    _ensure_columns(conn, {"session_id_known": "INTEGER"})
+    conn.execute(
+        """
+        UPDATE usage_events
+        SET session_id_known = CASE
+            WHEN nullif(trim(session_id), '') IS NULL THEN 0
+            WHEN trim(session_id) = 'unknown' THEN NULL
+            ELSE 1
+        END
+        WHERE session_id_known IS NULL
+        """
+    )
 
 
 def _migrate_v5(conn: sqlite3.Connection) -> None:
