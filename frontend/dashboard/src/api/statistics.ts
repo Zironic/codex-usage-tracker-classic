@@ -7,6 +7,8 @@ export type StatisticsRequest = {
   history: 'active' | 'all';
   model?: string;
   session_gap_minutes: number;
+  active_gap_cap_minutes: number;
+  comparison_at?: string;
   top_limit?: number;
   all_time?: boolean;
 };
@@ -16,6 +18,7 @@ export type StatisticsSeriesPoint = {
   local_period_start?: string;
   calls: number;
   known_credits: number;
+  active_minutes: number;
   rolling_7d_credits?: number;
   rolling_30d_credits?: number;
 };
@@ -24,6 +27,87 @@ export type StatisticsSeries = {
   granularity: 'day' | 'hour';
   timezone?: string;
   points: StatisticsSeriesPoint[];
+};
+
+export type StatisticsMixRow = {
+  label: string;
+  calls: number;
+  share: number | null;
+};
+
+export type StatisticsGroupRow = {
+  label: string;
+  calls: number;
+  call_share: number | null;
+  total_tokens: number;
+  tokens_per_call: number | null;
+  known_credits: number;
+  priced_calls: number;
+  priced_call_ratio: number | null;
+  credit_share: number | null;
+  active_minutes: number;
+  active_time_share: number | null;
+  turns: number;
+  calls_per_turn: number | null;
+  credits_per_turn: number | null;
+  credits_per_active_hour: number | null;
+  subagent_calls: number;
+  subagent_calls_per_turn: number | null;
+  model_mix?: StatisticsMixRow[];
+  effort_mix?: StatisticsMixRow[];
+  project?: string;
+  thread?: string;
+};
+
+export type StatisticsCohortRow = StatisticsGroupRow & {
+  plan: string | null;
+  rate_revision: string | null;
+  since: string;
+  until: string;
+  elapsed_days: number;
+  calls_per_day: number | null;
+  active_minutes_per_day: number | null;
+  turns_per_day: number | null;
+  credits_per_day: number | null;
+  credits_per_call: number | null;
+  primary_meter_burn_percent_per_day: number | null;
+  secondary_meter_burn_percent_per_day: number | null;
+};
+
+export type StatisticsWorkPeriod = {
+  start_at: string;
+  end_at: string;
+  duration_seconds: number;
+  active_seconds: number;
+  active_minutes: number;
+  calls: number;
+  turns: number;
+  known_credits: number;
+  priced_calls: number;
+  credits_per_active_hour: number | null;
+  models: string[];
+  subagent_calls: number;
+  model_switches: number;
+};
+
+export type StatisticsActivity = {
+  estimated_active_seconds: number;
+  estimated_active_minutes: number;
+  estimated_active_hours: number;
+  measured_call_duration_seconds: number;
+  capped_inter_call_gap_seconds: number;
+  distinct_turns: number;
+  calls_per_turn: number | null;
+  credits_per_turn: number | null;
+  subagent_calls: number;
+  subagent_calls_per_turn: number | null;
+  calls_per_active_hour: number | null;
+  credits_per_active_hour: number | null;
+  median_session_duration_seconds: number | null;
+  p75_session_duration_seconds: number | null;
+  p90_session_duration_seconds: number | null;
+  longest_work_periods: StatisticsWorkPeriod[];
+  most_active_turns: Array<Record<string, unknown>>;
 };
 
 export type StatisticsModelRow = {
@@ -68,20 +152,51 @@ export type StatisticsPayload = {
   data_state: 'ready' | 'refresh_required';
   reason: string | null;
   scope: Record<string, unknown>;
-  coverage: {
+  coverage?: {
     total_call_count: number;
     priced_call_count: number;
+    unpriced_call_count: number;
     priced_call_ratio: number;
     known_usage_credits: number;
   };
   headline?: Record<string, number | null>;
   distribution?: Record<string, number | null>;
   time_rates?: Record<string, number | null>;
+  activity?: StatisticsActivity;
   model_rows?: StatisticsModelRow[];
   series?: StatisticsSeries;
   hourly_series?: StatisticsSeries | null;
-  heatmap?: Array<{ weekday: number; hour: number; calls: number; known_credits: number }>;
-  sessions?: { count: number; rows: Array<Record<string, unknown>> };
+  heatmap?: Array<{
+    weekday: number;
+    hour: number;
+    calls: number;
+    known_credits: number;
+    active_minutes: number;
+  }>;
+  sessions?: {
+    count: number;
+    duration_distribution: Record<string, number | null>;
+    active_duration_distribution: Record<string, number | null>;
+    rows: StatisticsWorkPeriod[];
+  };
+  turns?: {
+    count: number;
+    calls_per_turn: number | null;
+    credits_per_turn: number | null;
+    subagent_calls_per_turn: number | null;
+    rows: Array<Record<string, unknown>>;
+  };
+  breakdowns?: Record<string, StatisticsGroupRow[]>;
+  attribution?: {
+    projects: StatisticsGroupRow[];
+    threads: StatisticsGroupRow[];
+    concentration: Record<string, number | null>;
+  };
+  cohorts?: {
+    comparison_at: string | null;
+    plan_rate_rows: StatisticsCohortRow[];
+    breakpoint_rows: StatisticsCohortRow[];
+  };
   concentration?: Record<string, number | null>;
   model_transitions?: {
     switch_count: number;
@@ -92,9 +207,18 @@ export type StatisticsPayload = {
     record_id: string;
     event_timestamp: string;
     model: string;
+    effort: string;
+    initiator_kind: string;
+    project: string;
+    thread: string;
     usage_credits: number;
     usage_credit_confidence: string;
     total_tokens: number;
+    duration_seconds: number;
+    active_seconds: number;
+    reasoning_output_tokens: number;
+    cache_ratio: number | null;
+    context_window_percent: number | null;
   }>;
 };
 
