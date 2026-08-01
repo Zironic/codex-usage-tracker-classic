@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from codex_usage_tracker.application.statistics_analysis import aggregate_usage_statistics
 from codex_usage_tracker.application.statistics_models import (
@@ -60,21 +61,48 @@ def get_usage_statistics(
     }
     if selected.data_state != "ready":
         return payload
-    payload.update(
-        aggregate_usage_statistics(
-            selected.rows,
-            request,
-            start=effective_start,
-            end=end,
-            rate_revisions=revisions,
-        )
+    analysis = aggregate_usage_statistics(
+        selected.rows,
+        request,
+        start=effective_start,
+        end=end,
+        rate_revisions=revisions,
     )
+    _replace_private_turn_keys(analysis)
+    payload.update(analysis)
     return payload
+
+
+def _replace_private_turn_keys(payload: dict[str, object]) -> None:
+    """Replace persisted turn identifiers with response-local ordinal labels."""
+
+    seen: dict[str, int] = {}
+    next_index = 0
+    for section in (payload.get("turns"), payload.get("activity")):
+        if not isinstance(section, dict):
+            continue
+        candidates = (
+            section.get("rows")
+            if "rows" in section
+            else section.get("most_active_turns")
+        )
+        if not isinstance(candidates, list):
+            continue
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            raw = item.pop("turn_group", None)
+            if not isinstance(raw, str):
+                continue
+            if raw not in seen:
+                seen[raw] = next_index
+                next_index += 1
+            item["turn_group"] = seen[raw]
 
 
 def _effective_start(
     requested_start: datetime,
-    rows: list[dict[str, object]],
+    rows: list[dict[str, Any]],
     *,
     all_time: bool,
 ) -> datetime:
