@@ -23,6 +23,7 @@ def build_usage_event(
     line_number: int,
     event_timestamp: str,
     session_id: str,
+    session_id_known: int,
     session_info: SessionInfo | None,
     session_meta: dict[str, str | None],
     current_turn: dict[str, Any],
@@ -52,10 +53,14 @@ def build_usage_event(
         event_timestamp=event_timestamp,
         cumulative_total_tokens=cumulative_total_tokens,
         total_tokens=total_tokens,
+        session_id_known=session_id_known,
+        source_file=path,
+        source_line=line_number,
     )
     event = UsageEvent(
         record_id=record_id,
         session_id=session_id,
+        session_id_known=session_id_known,
         thread_name=session_info.thread_name if session_info else None,
         session_updated_at=session_info.updated_at if session_info else None,
         event_timestamp=event_timestamp,
@@ -206,16 +211,26 @@ def _record_id(
     event_timestamp: str,
     cumulative_total_tokens: int,
     total_tokens: int,
+    *,
+    session_id_known: int,
+    source_file: Path,
+    source_line: int,
 ) -> str:
-    raw = "|".join(
-        [
-            session_id,
-            turn_id or "",
-            event_timestamp,
-            str(cumulative_total_tokens),
-            str(total_tokens),
+    identity_values = [
+        session_id,
+        turn_id or "",
+        event_timestamp,
+        str(cumulative_total_tokens),
+        str(total_tokens),
+    ]
+    if session_id_known != 1:
+        identity_values = [
+            "unknown-session-record-v1",
+            str(source_file.resolve()),
+            str(source_line),
+            *identity_values,
         ]
-    )
+    raw = "|".join(identity_values)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -246,6 +261,14 @@ def session_id_from_path(path: Path) -> str | None:
     if not match:
         return None
     return match.group(1)
+
+
+def unidentified_session_id(path: Path) -> str:
+    """Return an opaque, file-stable identity without claiming a known session ID."""
+
+    normalized = path.resolve().as_posix()
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return f"unidentified:{digest}"
 
 
 def nullable_int(

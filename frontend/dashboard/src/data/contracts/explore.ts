@@ -69,11 +69,24 @@ export function decodeExploreCalls(value: unknown): ExploreCallsPage {
     schema,
     ...page,
     rows: records(payload.rows, "call rows").map((row, index) =>
-      usageRowToCall(row as UsageRow, page.offset + index),
+      usageRowToResearchCall(row as UsageRow, page.offset + index),
     ),
     threadKey: text(payload.thread_key),
     filterOptions: decodeCallFilterOptions(payload.filter_options),
   };
+}
+
+function usageRowToResearchCall(row: UsageRow, index: number): CallRow {
+  const call = usageRowToCall(row, index) as CallRow & {
+    plan?: string;
+    rateRevision?: string;
+  };
+  call.plan = text(row.rate_limit_plan_type);
+  call.rateRevision = text(
+    (row as UsageRow & { usage_credit_rate_revision?: string | null })
+      .usage_credit_rate_revision,
+  );
+  return call;
 }
 
 function decodeCallFilterOptions(

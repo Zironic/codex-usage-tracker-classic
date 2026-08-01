@@ -36,7 +36,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: System :: Monitoring",
 ]
-dependencies = ["mcp>=1.2.0", "tiktoken>=0.13.0"]
+dependencies = ["mcp>=1.2.0,<2", "tiktoken>=0.13.0", "tzdata>=2025.2"]
 
 [project.urls]
 Homepage = "https://github.com/douglasmonsky/codex-usage-tracker"
@@ -286,6 +286,9 @@ changed_line_warn = 800
 known_first_party = ["codex_usage_tracker"]
 optional_dependencies_dev_groups = ["dev"]
 extend_exclude = ["scripts"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["tzdata"]
 
 [tool.vulture]
 min_confidence = 60

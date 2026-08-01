@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from codex_usage_tracker.server.agent_route_inventory import AGENT_ROUTE_PROFILES
 from codex_usage_tracker.server.route_profile import DashboardRouteProfile
 from codex_usage_tracker.server.route_profile import profile as _profile
 from codex_usage_tracker.server.v2_route_inventory import HTTP_V2_ROUTE_PROFILES
@@ -198,6 +199,7 @@ DASHBOARD_ROUTE_PROFILES: tuple[DashboardRouteProfile, ...] = (
         may_scan_all_history=True,
     ),
     *HTTP_V2_ROUTE_PROFILES,
+    *AGENT_ROUTE_PROFILES,
     _profile(
         "GET",
         "/api/allowance/diagnostics",

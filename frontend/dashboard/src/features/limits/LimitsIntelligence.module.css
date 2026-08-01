@@ -18,6 +18,101 @@
   min-width: 0;
 }
 
+.comparisonCard {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  border-color: var(--line-strong);
+}
+
+.comparisonHeader {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.comparisonHeader h2,
+.comparisonHeader p,
+.comparisonHero p,
+.comparisonCaveats {
+  margin: 0;
+}
+
+.comparisonEyebrow {
+  margin: 0 0 4px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.comparisonHero {
+  display: flex;
+  gap: 18px;
+  align-items: baseline;
+  padding: 18px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+}
+
+.comparisonRatio {
+  color: var(--ink-strong);
+  font-size: clamp(34px, 6vw, 58px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.comparisonTransition {
+  margin-top: 6px !important;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.comparisonCohorts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.comparisonCohorts > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line-subtle);
+  border-radius: 10px;
+}
+
+.comparisonCohorts span,
+.comparisonCohorts small {
+  color: var(--ink-muted);
+}
+
+.comparisonCohorts strong {
+  color: var(--ink-strong);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.comparisonEvidence {
+  display: flex;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.comparisonCaveats {
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .rangeControls,
 .customRange,
 .paginationActions {
@@ -257,7 +352,6 @@
   .insightGrid {
     grid-template-columns: 1fr 1fr;
   }
-
 }
 
 @media (max-width: 720px) {
@@ -297,8 +391,15 @@
     align-self: flex-start;
   }
 
-  .insightGrid {
+  .insightGrid,
+  .comparisonCohorts {
     grid-template-columns: 1fr;
+  }
+
+  .comparisonHeader,
+  .comparisonHero {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .rangeControls,
@@ -307,5 +408,4 @@
     align-items: stretch;
     flex-direction: column;
   }
-
 }

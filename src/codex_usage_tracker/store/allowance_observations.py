@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,16 @@ ALLOWANCE_OBSERVATION_COLUMNS = (
     "cumulative_total_tokens",
 )
 ALLOWANCE_SYNC_BATCH_SIZE = 500
+
+
+@dataclass(frozen=True)
+class AllowanceObservationSelection:
+    """Selected rows plus completeness metadata for evidence exports."""
+
+    rows: list[dict[str, Any]]
+    matched_count: int
+    exported_count: int
+    truncated: bool
 
 
 def rebuild_allowance_observations(conn: sqlite3.Connection) -> int:
@@ -114,45 +125,103 @@ def query_allowance_observations(
 ) -> list[dict[str, Any]]:
     """Return normalized allowance observations from the newest limited tail."""
 
+    return query_allowance_observation_selection(
+        db_path=db_path,
+        include_archived=include_archived,
+        window_kind=window_kind,
+        limit=limit,
+        newest_first=newest_first,
+    ).rows
+
+
+def query_allowance_observation_selection(
+    db_path: Path = DEFAULT_DB_PATH,
+    *,
+    include_archived: bool = False,
+    window_kind: str | None = None,
+    limit: int | None = 1000,
+    newest_first: bool = False,
+) -> AllowanceObservationSelection:
+    """Return selected observations and explicit completeness metadata."""
+
     with connect(db_path) as conn:
         init_db(conn)
-        where: list[str] = []
-        params: list[Any] = []
-        if not include_archived:
-            where.append("is_archived = 0")
-        if window_kind:
-            where.append("window_kind = ?")
-            params.append(window_kind)
+        where, params = _observation_filters(
+            include_archived=include_archived,
+            window_kind=window_kind,
+        )
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-        columns = ", ".join(ALLOWANCE_OBSERVATION_COLUMNS)
-        ascending_order = "event_timestamp ASC, cumulative_total_tokens ASC, window_key ASC"
-        descending_order = "event_timestamp DESC, cumulative_total_tokens DESC, window_key DESC"
-        display_order = descending_order if newest_first else ascending_order
-        if limit is None:
-            rows = conn.execute(
-                f"""
-                SELECT {columns}
-                FROM allowance_observations
-                {where_sql}
-                ORDER BY {display_order}
-                """,
-                params,
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                f"""
-                SELECT * FROM (
-                    SELECT {columns}
-                    FROM allowance_observations
-                    {where_sql}
-                    ORDER BY {descending_order}
-                    LIMIT ?
-                ) AS newest
-                ORDER BY {display_order}
-                """,
-                [*params, max(int(limit), 0)],
-            ).fetchall()
-    return [row_to_dict(row) for row in rows]
+        metadata = conn.execute(
+            f"SELECT COUNT(*) AS matched_count FROM allowance_observations {where_sql}",
+            params,
+        ).fetchone()
+        rows = _query_observation_rows(
+            conn,
+            where_sql=where_sql,
+            params=params,
+            limit=limit,
+            newest_first=newest_first,
+        )
+    matched_count = int(metadata["matched_count"] if metadata is not None else 0)
+    result_rows = [row_to_dict(row) for row in rows]
+    return AllowanceObservationSelection(
+        rows=result_rows,
+        matched_count=matched_count,
+        exported_count=len(result_rows),
+        truncated=limit is not None and len(result_rows) < matched_count,
+    )
+
+
+def _observation_filters(
+    *,
+    include_archived: bool,
+    window_kind: str | None,
+) -> tuple[list[str], list[Any]]:
+    where: list[str] = []
+    params: list[Any] = []
+    if not include_archived:
+        where.append("is_archived = 0")
+    if window_kind:
+        where.append("window_kind = ?")
+        params.append(window_kind)
+    return where, params
+
+
+def _query_observation_rows(
+    conn: sqlite3.Connection,
+    *,
+    where_sql: str,
+    params: list[Any],
+    limit: int | None,
+    newest_first: bool,
+) -> list[sqlite3.Row]:
+    columns = ", ".join(ALLOWANCE_OBSERVATION_COLUMNS)
+    ascending_order = "event_timestamp ASC, cumulative_total_tokens ASC, window_key ASC"
+    descending_order = "event_timestamp DESC, cumulative_total_tokens DESC, window_key DESC"
+    display_order = descending_order if newest_first else ascending_order
+    if limit is None:
+        return conn.execute(
+            f"""
+            SELECT {columns}
+            FROM allowance_observations
+            {where_sql}
+            ORDER BY {display_order}
+            """,
+            params,
+        ).fetchall()
+    return conn.execute(
+        f"""
+        SELECT * FROM (
+            SELECT {columns}
+            FROM allowance_observations
+            {where_sql}
+            ORDER BY {descending_order}
+            LIMIT ?
+        ) AS newest
+        ORDER BY {display_order}
+        """,
+        [*params, max(int(limit), 0)],
+    ).fetchall()
 
 
 def _insert_observation_sql(window_key: str, *, record_filter: str = "") -> str:

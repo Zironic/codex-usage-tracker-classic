@@ -53,6 +53,7 @@ def build_subagent_usage_report(
     db_path: Path,
     pricing_path: Path,
     since: str | None = None,
+    until: str | None = None,
     parent_thread: str | None = None,
     agent_role: str | None = None,
     subagent_type: str | None = None,
@@ -63,12 +64,14 @@ def build_subagent_usage_report(
     """Build an aggregate-only observed subagent usage report."""
 
     validated_since = _validate_since(since)
+    validated_until = _validate_since(until)
     _validate_limit(limit)
     validated_privacy_mode = validate_privacy_mode(privacy_mode)
     pricing = load_pricing_config(pricing_path)
     queried = query_subagent_usage_buckets(
         db_path,
         since=validated_since,
+        until=validated_until,
         parent_thread=parent_thread,
         agent_role=agent_role,
         subagent_type=subagent_type,
@@ -138,6 +141,7 @@ def build_subagent_usage_report(
     coverage = _coverage(queried["coverage"], priced_subagent["pricing_coverage"])
     filters = {
         "since": validated_since,
+        "until": validated_until,
         "parent_thread": _private_parent_label(parent_thread, privacy_mode=validated_privacy_mode),
         "agent_role": agent_role,
         "subagent_type": subagent_type,
@@ -298,6 +302,8 @@ def _coverage(coverage: dict[str, Any], pricing_coverage: dict[str, Any]) -> dic
     return {
         "missing_session_rows": int(coverage["missing_session_rows"]),
         "missing_session_tokens": int(coverage["missing_session_tokens"]),
+        "ambiguous_session_rows": int(coverage.get("ambiguous_session_rows", 0)),
+        "ambiguous_session_tokens": int(coverage.get("ambiguous_session_tokens", 0)),
         "missing_role_spawns": int(coverage["missing_role_spawns"]),
         "missing_type_spawns": int(coverage["missing_type_spawns"]),
         "pricing": dict(pricing_coverage),

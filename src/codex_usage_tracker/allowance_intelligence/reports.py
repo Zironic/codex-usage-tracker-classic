@@ -7,9 +7,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from codex_usage_tracker.allowance_intelligence.export_payload import (
+    ALLOWANCE_EXPORT_COMPACT_SCHEMA,
+    ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA,
+    ALLOWANCE_EXPORT_FORMATS,
+    ALLOWANCE_EXPORT_VERBOSE_SCHEMA,
+    AllowanceExportCoverage,
+    build_compact_allowance_export,
+    build_compact_allowance_export_v2,
+    build_verbose_allowance_export,
+    compact_plan_comparison,
+    normalize_time_origin,
+)
 from codex_usage_tracker.allowance_intelligence.model import (
     WINDOW_KIND_CHOICES,
     build_allowance_analysis,
+)
+from codex_usage_tracker.allowance_intelligence.plan_comparison import (
+    build_plan_meter_comparison,
+)
+from codex_usage_tracker.allowance_intelligence.rate_change_detection import (
+    infer_timestamped_rate_change,
 )
 from codex_usage_tracker.core.paths import (
     DEFAULT_ALLOWANCE_PATH,
@@ -21,11 +39,18 @@ from codex_usage_tracker.pricing.allowance import (
     annotate_rows_with_allowance,
     load_allowance_config,
 )
-from codex_usage_tracker.store.api import query_allowance_observations
+from codex_usage_tracker.store.allowance_materialization import (
+    materialize_allowance_intelligence,
+)
+from codex_usage_tracker.store.allowance_observations import (
+    AllowanceObservationSelection,
+    query_allowance_observation_selection,
+)
+from codex_usage_tracker.store.connection import connect
 
 ALLOWANCE_HISTORY_SCHEMA = "codex-usage-tracker-allowance-history-v1"
 ALLOWANCE_DIAGNOSTICS_SCHEMA = "codex-usage-tracker-allowance-diagnostics-v1"
-ALLOWANCE_EXPORT_SCHEMA = "codex-usage-tracker-allowance-evidence-export-v1"
+ALLOWANCE_EXPORT_SCHEMA = ALLOWANCE_EXPORT_VERBOSE_SCHEMA
 
 
 @dataclass(frozen=True)
@@ -38,7 +63,11 @@ class AllowanceReport:
         schema = self.payload.get("schema")
         if schema == ALLOWANCE_HISTORY_SCHEMA:
             return _render_history(self.payload)
-        if schema == ALLOWANCE_EXPORT_SCHEMA:
+        if schema in {
+            ALLOWANCE_EXPORT_COMPACT_SCHEMA,
+            ALLOWANCE_EXPORT_COMPACT_V2_SCHEMA,
+            ALLOWANCE_EXPORT_VERBOSE_SCHEMA,
+        }:
             return _render_export(self.payload)
         return _render_diagnostics(self.payload)
 
@@ -57,7 +86,7 @@ def build_allowance_history_report(
 
     privacy_mode = validate_privacy_mode(privacy_mode)
     _validate_window_kind(window_kind)
-    rows = _annotated_observation_rows(
+    selection, rows = _annotated_observation_selection(
         db_path=db_path,
         allowance_path=allowance_path,
         rate_card_path=rate_card_path,
@@ -72,7 +101,7 @@ def build_allowance_history_report(
             "privacy_mode": privacy_mode,
             "include_archived": include_archived,
             "window_kind": window_kind,
-            "row_count": len(rows),
+            "row_count": selection.exported_count,
             "rows": [_history_row(row, privacy_mode=privacy_mode) for row in rows],
             "notes": _privacy_notes(),
         }
@@ -93,7 +122,7 @@ def build_allowance_diagnostics_report(
 
     privacy_mode = validate_privacy_mode(privacy_mode)
     _validate_window_kind(window_kind)
-    rows = _annotated_observation_rows(
+    _selection, rows = _annotated_observation_selection(
         db_path=db_path,
         allowance_path=allowance_path,
         rate_card_path=rate_card_path,
@@ -101,16 +130,15 @@ def build_allowance_diagnostics_report(
         window_kind=window_kind,
         limit=limit,
     )
-    analysis = build_allowance_analysis(rows)
-    payload = {
-        "schema": ALLOWANCE_DIAGNOSTICS_SCHEMA,
-        "generated_at": _generated_at(),
-        "privacy_mode": privacy_mode,
-        "include_archived": include_archived,
-        "window_kind": window_kind,
-        **_privacy_filtered_analysis(analysis, privacy_mode=privacy_mode),
-    }
-    return AllowanceReport(payload)
+    return AllowanceReport(
+        _diagnostics_payload(
+            rows,
+            generated_at=_generated_at(),
+            include_archived=include_archived,
+            window_kind=window_kind,
+            privacy_mode=privacy_mode,
+        )
+    )
 
 
 def build_allowance_export_report(
@@ -121,36 +149,166 @@ def build_allowance_export_report(
     include_archived: bool = False,
     window_kind: str | None = None,
     limit: int | None = None,
+    export_format: str = "compact",
+    from_plan: str | None = None,
+    to_plan: str | None = None,
 ) -> AllowanceReport:
     """Build a strict-privacy local evidence bundle for manual sharing."""
 
-    diagnostics = build_allowance_diagnostics_report(
+    _validate_window_kind(window_kind)
+    if export_format not in ALLOWANCE_EXPORT_FORMATS:
+        allowed = ", ".join(ALLOWANCE_EXPORT_FORMATS)
+        raise ValueError(f"export_format must be one of: {allowed}")
+    if bool(from_plan) != bool(to_plan):
+        raise ValueError("from_plan and to_plan must be provided together")
+    selection, rows = _annotated_observation_selection(
         db_path=db_path,
         allowance_path=allowance_path,
         rate_card_path=rate_card_path,
         include_archived=include_archived,
         window_kind=window_kind,
         limit=limit,
-        privacy_mode="strict",
-    ).payload
-    export = {
-        "schema": ALLOWANCE_EXPORT_SCHEMA,
-        "generated_at": diagnostics["generated_at"],
-        "privacy_mode": "strict",
-        "include_archived": include_archived,
-        "summary": diagnostics["summary"],
-        "windows": [_export_window(window) for window in diagnostics.get("windows", [])],
-        "change_candidates": diagnostics.get("change_candidates", []),
-        "notes": [
-            *_privacy_notes(),
-            "This bundle is local evidence only and is not an official OpenAI usage ledger.",
-            "Exact timestamps are bucketed to dates and local record identifiers are omitted.",
-        ],
-    }
-    return AllowanceReport(export)
+    )
+    generated_at = _generated_at()
+    compact_format = export_format in {"compact", "compact-v2"}
+    diagnostics = _diagnostics_payload(
+        rows,
+        generated_at=generated_at,
+        include_archived=include_archived,
+        window_kind=window_kind,
+        privacy_mode="normal" if compact_format else "strict",
+    )
+    notes = [
+        *_privacy_notes(),
+        "This bundle is local evidence only and is not an official OpenAI usage ledger.",
+    ]
+    if export_format == "compact":
+        notes.append(
+            "Source timestamps are rounded down to UTC minutes and encoded as offsets from "
+            "layout.time_origin; exact source timestamps and local identifiers are omitted."
+        )
+    else:
+        notes.append("Exact timestamps are bucketed to dates and local identifiers are omitted.")
+    if export_format == "verbose":
+        return AllowanceReport(
+            build_verbose_allowance_export(
+                diagnostics,
+                generated_at=generated_at,
+                include_archived=include_archived,
+                notes=notes,
+            )
+        )
+    windows = diagnostics.get("windows", [])
+    span_count = sum(
+        len(window.get("spans", []))
+        for window in windows
+        if isinstance(window, dict)
+    )
+    selected_start_at = selection.rows[0].get("event_timestamp") if selection.rows else None
+    selected_end_at = selection.rows[-1].get("event_timestamp") if selection.rows else None
+    coverage = AllowanceExportCoverage(
+        matched_observation_count=selection.matched_count,
+        exported_observation_count=selection.exported_count,
+        start_date=_date_bucket(selected_start_at),
+        end_date=_date_bucket(selected_end_at),
+        window_count=len(windows),
+        span_count=span_count,
+        truncated=selection.truncated,
+    )
+    plan_comparison: dict[str, Any] | None = None
+    if from_plan is not None and to_plan is not None:
+        plan_comparison = _plan_comparison_for_export(
+            db_path,
+            include_archived=include_archived,
+            from_plan=from_plan,
+            to_plan=to_plan,
+        )
+    if export_format == "compact-v2":
+        return AllowanceReport(
+            build_compact_allowance_export_v2(
+                diagnostics,
+                generated_at=generated_at,
+                include_archived=include_archived,
+                window_kind=window_kind,
+                requested_limit=limit,
+                coverage=coverage,
+                plan_comparison=plan_comparison,
+                notes=notes,
+            )
+        )
+    pricing_change = _pricing_change_for_export(
+        db_path,
+        allowance_path=allowance_path,
+        rate_card_path=rate_card_path,
+        include_archived=include_archived,
+    )
+    payload = build_compact_allowance_export(
+        diagnostics,
+        generated_at=generated_at,
+        include_archived=include_archived,
+        window_kind=window_kind,
+        requested_limit=limit,
+        coverage=coverage,
+        time_origin=normalize_time_origin(selected_start_at),
+        plan_comparison=plan_comparison,
+        notes=notes,
+    )
+    payload["pricing_change"] = compact_plan_comparison(pricing_change)
+    return AllowanceReport(payload)
 
 
-def _annotated_observation_rows(
+def _plan_comparison_for_export(
+    db_path: Path,
+    *,
+    include_archived: bool,
+    from_plan: str | None,
+    to_plan: str | None,
+) -> dict[str, Any]:
+    with connect(db_path) as connection:
+        materialize_allowance_intelligence(connection)
+        source = connection.execute(
+            "SELECT source_revision FROM allowance_source_state WHERE state_id = 1"
+        ).fetchone()
+        source_revision = str(source[0]) if source else "missing"
+        return build_plan_meter_comparison(
+            connection,
+            source_revision=source_revision,
+            archive_scope="all" if include_archived else "active",
+            window_kind="weekly",
+            cohort_key="codex",
+            from_plan=from_plan,
+            to_plan=to_plan,
+        )
+
+
+def _pricing_change_for_export(
+    db_path: Path,
+    *,
+    allowance_path: Path,
+    rate_card_path: Path,
+    include_archived: bool,
+) -> dict[str, Any]:
+    with connect(db_path) as connection:
+        materialize_allowance_intelligence(connection)
+        source = connection.execute(
+            "SELECT source_revision FROM allowance_source_state WHERE state_id = 1"
+        ).fetchone()
+        source_revision = str(source[0]) if source else "missing"
+        config = load_allowance_config(
+            allowance_path,
+            rate_card_path=rate_card_path,
+        )
+        return infer_timestamped_rate_change(
+            connection,
+            source_revision=source_revision,
+            archive_scope="all" if include_archived else "active",
+            window_kind="weekly",
+            cohort_key="codex",
+            config=config,
+        )
+
+
+def _annotated_observation_selection(
     *,
     db_path: Path,
     allowance_path: Path,
@@ -158,15 +316,34 @@ def _annotated_observation_rows(
     include_archived: bool,
     window_kind: str | None,
     limit: int | None,
-) -> list[dict[str, Any]]:
-    rows = query_allowance_observations(
+) -> tuple[AllowanceObservationSelection, list[dict[str, Any]]]:
+    selection = query_allowance_observation_selection(
         db_path=db_path,
         include_archived=include_archived,
         window_kind=window_kind,
         limit=limit,
     )
     allowance = load_allowance_config(allowance_path, rate_card_path=rate_card_path)
-    return annotate_rows_with_allowance(rows, allowance)
+    return selection, annotate_rows_with_allowance(selection.rows, allowance)
+
+
+def _diagnostics_payload(
+    rows: list[dict[str, Any]],
+    *,
+    generated_at: str,
+    include_archived: bool,
+    window_kind: str | None,
+    privacy_mode: str,
+) -> dict[str, Any]:
+    analysis = build_allowance_analysis(rows)
+    return {
+        "schema": ALLOWANCE_DIAGNOSTICS_SCHEMA,
+        "generated_at": generated_at,
+        "privacy_mode": privacy_mode,
+        "include_archived": include_archived,
+        "window_kind": window_kind,
+        **_privacy_filtered_analysis(analysis, privacy_mode=privacy_mode),
+    }
 
 
 def _history_row(row: dict[str, Any], *, privacy_mode: str) -> dict[str, Any]:
@@ -195,7 +372,9 @@ def _history_row(row: dict[str, Any], *, privacy_mode: str) -> dict[str, Any]:
     return payload
 
 
-def _privacy_filtered_analysis(analysis: dict[str, Any], *, privacy_mode: str) -> dict[str, Any]:
+def _privacy_filtered_analysis(
+    analysis: dict[str, Any], *, privacy_mode: str
+) -> dict[str, Any]:
     return {
         "summary": analysis["summary"],
         "windows": [
@@ -203,14 +382,17 @@ def _privacy_filtered_analysis(analysis: dict[str, Any], *, privacy_mode: str) -
             for window in analysis["windows"]
         ],
         "spans": [
-            _privacy_filtered_span(span, privacy_mode=privacy_mode) for span in analysis["spans"]
+            _privacy_filtered_span(span, privacy_mode=privacy_mode)
+            for span in analysis["spans"]
         ],
         "change_candidates": analysis["change_candidates"],
         "notes": [*analysis["notes"], *_privacy_notes()],
     }
 
 
-def _privacy_filtered_window(window: dict[str, Any], *, privacy_mode: str) -> dict[str, Any]:
+def _privacy_filtered_window(
+    window: dict[str, Any], *, privacy_mode: str
+) -> dict[str, Any]:
     return {
         "window_kind": window.get("window_kind"),
         "plan_type": window.get("plan_type"),
@@ -227,7 +409,9 @@ def _privacy_filtered_window(window: dict[str, Any], *, privacy_mode: str) -> di
     }
 
 
-def _privacy_filtered_span(span: dict[str, Any], *, privacy_mode: str) -> dict[str, Any]:
+def _privacy_filtered_span(
+    span: dict[str, Any], *, privacy_mode: str
+) -> dict[str, Any]:
     payload = dict(span)
     payload["start_observed_date"] = _date_bucket(payload.get("start_observed_at"))
     payload["end_observed_date"] = _date_bucket(payload.get("end_observed_at"))
@@ -236,41 +420,6 @@ def _privacy_filtered_span(span: dict[str, Any], *, privacy_mode: str) -> dict[s
         payload.pop("start_observed_at", None)
         payload.pop("end_observed_at", None)
     return payload
-
-
-def _export_window(window: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "window_kind": window.get("window_kind"),
-        "plan_type": window.get("plan_type"),
-        "limit_id": window.get("limit_id"),
-        "observation_count": window.get("observation_count"),
-        "positive_span_count": window.get("positive_span_count"),
-        "evidence_grade": window.get("evidence_grade"),
-        "span_stats": window.get("span_stats"),
-        "change_candidates": window.get("change_candidates"),
-        "spans": [
-            {
-                key: value
-                for key, value in span.items()
-                if key
-                in {
-                    "window_kind",
-                    "plan_type",
-                    "limit_id",
-                    "start_observed_date",
-                    "end_observed_date",
-                    "start_used_percent",
-                    "end_used_percent",
-                    "delta_usage_percent",
-                    "estimated_usage_credits",
-                    "credits_per_percent",
-                    "row_count",
-                    "credit_confidence_mix",
-                }
-            }
-            for span in window.get("spans", [])
-        ],
-    }
 
 
 def _validate_window_kind(window_kind: str | None) -> None:
@@ -309,6 +458,12 @@ def _render_diagnostics(payload: dict[str, Any]) -> str:
 def _render_export(payload: dict[str, Any]) -> str:
     summary = payload.get("summary", {})
     grade = summary.get("primary_evidence_grade") if isinstance(summary, dict) else None
+    coverage = payload.get("coverage")
+    if isinstance(coverage, dict):
+        return (
+            "Allowance evidence export ready with strict privacy "
+            f"({grade}; {coverage.get('exported_observation_count', 0)} observations)."
+        )
     return f"Allowance evidence export ready with strict privacy ({grade})."
 
 

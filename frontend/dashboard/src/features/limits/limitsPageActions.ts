@@ -1,6 +1,13 @@
-export function downloadJson(filename: string, payload: unknown): void {
+export function downloadJson(
+  filename: string,
+  payload: unknown,
+  options: { pretty?: boolean } = {},
+): void {
+  const json = options.pretty
+    ? JSON.stringify(payload, null, 2)
+    : JSON.stringify(payload);
   const url = URL.createObjectURL(new Blob(
-    [JSON.stringify(payload, null, 2)],
+    [json],
     { type: 'application/json;charset=utf-8' },
   ));
   const anchor = document.createElement('a');

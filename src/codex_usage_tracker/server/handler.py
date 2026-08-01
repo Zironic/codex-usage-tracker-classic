@@ -16,6 +16,7 @@ from codex_usage_tracker.core.paths import DEFAULT_RATE_CARD_PATH
 from codex_usage_tracker.server import allowance, allowance_v2, compression_routes
 from codex_usage_tracker.server import context as server_context
 from codex_usage_tracker.server import usage_refresh as server_usage_refresh
+from codex_usage_tracker.server.agent_api import AgentRouteMixin
 from codex_usage_tracker.server.analysis_jobs import AnalysisJobRegistry
 from codex_usage_tracker.server.call_detail import (
     handle_call_detail_request,
@@ -71,6 +72,7 @@ from codex_usage_tracker.store.api import query_usage_api_filter_options
 
 
 class _UsageDashboardHandler(
+    AgentRouteMixin,
     compression_routes.CompressionRouteMixin,
     DiagnosticRouteMixin,
     DedupeRouteMixin,
@@ -93,11 +95,13 @@ class _UsageDashboardHandler(
         context_chars: int,
         api_token: str,
         refresh_lock: threading.Lock,
+        server_instance_id: str = "agent-http",
         refresh_jobs: server_usage_refresh.RefreshJobRegistry | None = None,
         analysis_jobs: AnalysisJobRegistry | None = None,
         compression_jobs: compression_routes.CompressionJobRegistry | None = None,
         query_cache: AggregateQueryCache | None = None,
         allowance_query_cache: AggregateQueryCache | None = None,
+        agent_services: object | None = None,
         dashboard_path: Path | None = None,
         context_api_enabled: bool = False,
         context_api_state: ContextApiState | None = None,
@@ -126,6 +130,7 @@ class _UsageDashboardHandler(
         )
         self._context_chars = context_chars
         self._api_token = api_token
+        self._server_instance_id = server_instance_id
         self._context_api_state = context_api_state or ContextApiState(context_api_enabled)
         self._refresh_lock = refresh_lock
         self._refresh_jobs = refresh_jobs or server_usage_refresh.RefreshJobRegistry()
@@ -133,13 +138,35 @@ class _UsageDashboardHandler(
         self._compression_jobs = compression_jobs or compression_routes.CompressionJobRegistry()
         self._query_cache = query_cache or AggregateQueryCache()
         self._allowance_query_cache = allowance_query_cache or allowance.new_query_cache()
+        self._agent_services = agent_services
         self._configure_http_v2()
+        agent_scopes = [
+            "catalog_read",
+            "aggregate_read",
+            "aggregate_write",
+            "analysis_read",
+            "evidence_read",
+            "allowance_read",
+            "export",
+        ]
+        if self._context_api_state.enabled:
+            agent_scopes.extend(("local_index_read", "raw_context_read"))
+        self._configure_http_agent(
+            cast(Any, agent_services),
+            authorized_scopes=tuple(agent_scopes),
+        )
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib hook name
         self._request_started_at = perf_counter()
         parsed = urlparse(self.path)
         if not self._request_origin_allowed():
+            if parsed.path == "/api/v2/agent":
+                self._send_http_agent_transport_error(
+                    HTTPStatus.FORBIDDEN,
+                    "Request host or origin is not allowed",
+                )
+                return
             self._send_error(
                 HTTPStatus.FORBIDDEN,
                 "Request host or origin is not allowed",
@@ -171,6 +198,12 @@ class _UsageDashboardHandler(
         self._request_started_at = perf_counter()
         parsed = urlparse(self.path)
         if not self._request_origin_allowed():
+            if parsed.path == "/api/v2/agent":
+                self._send_http_agent_transport_error(
+                    HTTPStatus.FORBIDDEN,
+                    "Request host or origin is not allowed",
+                )
+                return
             self._send_error(
                 HTTPStatus.FORBIDDEN,
                 "Request host or origin is not allowed",

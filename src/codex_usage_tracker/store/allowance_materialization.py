@@ -23,8 +23,9 @@ def materialize_allowance_intelligence(
 ) -> bool:
     """Reconcile canonical observations and replace derived evidence atomically.
 
-    Returns whether canonical allowance input changed.  Derived rows are always
-    rebuilt from that canonical input, never from physical copied usage rows.
+    Returns whether canonical allowance input or its pricing basis changed.
+    Derived rows are always rebuilt from canonical input, never from physical
+    copied usage rows.
     """
     now = now or datetime.now(timezone.utc)
     conn.execute("SAVEPOINT allowance_materialization")
@@ -48,7 +49,8 @@ def _materialize(conn: sqlite3.Connection, now: datetime) -> bool:
             "SELECT * FROM allowance_observations ORDER BY event_timestamp, cumulative_total_tokens, observation_id"
         )
     ]
-    revision = _revision(rows)
+    allowance_config = load_allowance_config()
+    revision = _revision(rows, allowance_config)
     old = conn.execute(
         "SELECT source_revision, allowance_generation, model_version "
         "FROM allowance_source_state WHERE state_id=1"
@@ -92,7 +94,6 @@ def _materialize(conn: sqlite3.Connection, now: datetime) -> bool:
         )
         cycles.extend(scope_cycles)
         intervals.extend(scope_intervals)
-    allowance_config = load_allowance_config()
     cycles_by_id = {cycle.cycle_id: cycle for cycle in cycles}
     usage_by_interval: dict[str, tuple[dict[str, object], ...]] = {}
     pricing_by_interval: dict[str, dict[str, object]] = {}
@@ -303,7 +304,7 @@ def _float_value(value: object) -> float:
     return float(value) if isinstance(value, int | float) else 0.0
 
 
-def _revision(rows: list[dict[str, object]]) -> str:
+def _revision(rows: list[dict[str, object]], allowance_config: Any) -> str:
     fields = (
         "observation_id",
         "record_id",
@@ -312,6 +313,7 @@ def _revision(rows: list[dict[str, object]]) -> str:
         "window_kind",
         "used_percent",
         "resets_at",
+        "plan_type",
         "limit_id",
         "is_archived",
         "model",
@@ -325,6 +327,40 @@ def _revision(rows: list[dict[str, object]]) -> str:
         "cumulative_total_tokens",
     )
     canonical = [[row.get(field) for field in fields] for row in rows]
+    pricing_basis = {
+        "source": allowance_config.source,
+        "credit_rates": allowance_config.credit_rates,
+        "rate_metadata": allowance_config.rate_metadata,
+        "aliases": allowance_config.aliases,
+        "alias_metadata": allowance_config.alias_metadata,
+        "local_rate_models": sorted(allowance_config.local_rate_models),
+        "fast_multipliers": {
+            family: {
+                "multiplier": rate.multiplier,
+                "source_name": rate.source_name,
+                "source_url": rate.source_url,
+                "fetched_at": rate.fetched_at,
+                "confidence": rate.confidence,
+            }
+            for family, rate in sorted(allowance_config.fast_multipliers.items())
+        },
+        "rate_revisions": [
+            {
+                "revision_id": revision.revision_id,
+                "effective_at": revision.effective_at_text,
+                "effective_at_precision": revision.effective_at_precision,
+                "credit_rates": revision.credit_rates,
+                "rate_metadata": revision.rate_metadata,
+                "source": revision.source,
+            }
+            for revision in allowance_config.rate_revisions
+        ],
+    }
     return hashlib.sha256(
-        json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str).encode()
+        json.dumps(
+            {"observations": canonical, "pricing_basis": pricing_basis},
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode()
     ).hexdigest()

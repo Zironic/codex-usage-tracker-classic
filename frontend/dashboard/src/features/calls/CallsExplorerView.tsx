@@ -13,6 +13,7 @@ import { formatCompact, money, pct } from '../shared/format';
 import { presetLabel } from '../shared/investigationPresets';
 import { callInvestigatorRowLabel } from '../shared/tables';
 import { CallInspector } from './CallInspector';
+import type { CallsExportMode } from './callsExport';
 import { CallsFilterBar, type CallsFilterBarProps } from './CallsFilterBar';
 import { CallsPageHeader } from './CallsPageHeader';
 import { callsTablePageSize } from './useCallsExplorerControls';
@@ -23,7 +24,7 @@ type CallsExplorerViewProps = {
   header: {
     workspaceSwitcher?: ReactNode;
     canExport: boolean;
-    onExport(): void;
+    onExport(mode: CallsExportMode): Promise<void>;
     onCopyView(): void;
     onRefresh(): void;
   };

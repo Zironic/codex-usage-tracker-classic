@@ -17,6 +17,7 @@ from codex_usage_tracker.pricing.allowance_rate_card import (
     number_value,
     optional_str,
 )
+from codex_usage_tracker.pricing.allowance_rate_history import revision_for_timestamp
 from codex_usage_tracker.pricing.fast_tier import credit_multiplier_for_row
 
 __all__ = (
@@ -35,29 +36,27 @@ def annotate_rows_with_allowance(
     model_field: str = "model",
     allowance_path: Path = DEFAULT_ALLOWANCE_PATH,
 ) -> list[dict[str, Any]]:
-    """Return copied rows with Codex credit usage annotations."""
+    """Return copied rows with timestamp-correct Codex credit usage annotations."""
 
     resolved = config or load_allowance_config(allowance_path)
     annotated: list[dict[str, Any]] = []
     for row in rows:
         copy = dict(row)
         model = copy.get(model_field)
-        match = resolve_credit_rate(model, resolved)
+        match = resolve_credit_rate(
+            model,
+            resolved,
+            observed_at=copy.get("event_timestamp"),
+        )
         multiplier, multiplier_match, multiplier_fallback = credit_multiplier_for_row(
             copy, resolved.fast_multipliers
         )
         multiplier_source = (
             multiplier_match.source_name if multiplier_match else multiplier_fallback
         )
-        multiplier_source_url = (
-            multiplier_match.source_url if multiplier_match else None
-        )
-        multiplier_fetched_at = (
-            multiplier_match.fetched_at if multiplier_match else None
-        )
-        multiplier_confidence = (
-            multiplier_match.confidence if multiplier_match else None
-        )
+        multiplier_source_url = multiplier_match.source_url if multiplier_match else None
+        multiplier_fetched_at = multiplier_match.fetched_at if multiplier_match else None
+        multiplier_confidence = multiplier_match.confidence if multiplier_match else None
         if match is None:
             copy.update(
                 {
@@ -75,6 +74,9 @@ def annotate_rows_with_allowance(
                     "usage_credit_source_url": None,
                     "usage_credit_fetched_at": None,
                     "usage_credit_tier": None,
+                    "usage_credit_rate_revision": None,
+                    "usage_credit_rate_effective_at": None,
+                    "usage_credit_rate_effective_at_precision": None,
                     "usage_credit_note": "No bundled or configured credit rate matched this model.",
                 }
             )
@@ -103,6 +105,11 @@ def annotate_rows_with_allowance(
                     "usage_credit_source_url": metadata.get("source_url"),
                     "usage_credit_fetched_at": metadata.get("fetched_at"),
                     "usage_credit_tier": metadata.get("tier"),
+                    "usage_credit_rate_revision": metadata.get("rate_revision"),
+                    "usage_credit_rate_effective_at": metadata.get("effective_at"),
+                    "usage_credit_rate_effective_at_precision": metadata.get(
+                        "effective_at_precision"
+                    ),
                     "usage_credit_note": note,
                 }
             )
@@ -170,25 +177,37 @@ def _sum_numeric_field(
 
 
 def resolve_credit_rate(
-    model: object, config: UsageAllowanceConfig
+    model: object,
+    config: UsageAllowanceConfig,
+    *,
+    observed_at: object = None,
 ) -> tuple[str, dict[str, float], str, str, dict[str, Any]] | None:
-    """Resolve a model label into a credit rate, confidence, and note."""
+    """Resolve a model label into the rate effective at one event timestamp."""
 
     normalized = normalize_model(model)
     if not normalized:
         return None
-    return _resolve_direct_credit_rate(normalized, config) or _resolve_alias_credit_rate(
-        normalized, config
+    return _resolve_direct_credit_rate(
+        normalized,
+        config,
+        observed_at=observed_at,
+    ) or _resolve_alias_credit_rate(
+        normalized,
+        config,
+        observed_at=observed_at,
     )
 
 
 def _resolve_direct_credit_rate(
-    model: str, config: UsageAllowanceConfig
+    model: str,
+    config: UsageAllowanceConfig,
+    *,
+    observed_at: object,
 ) -> tuple[str, dict[str, float], str, str, dict[str, Any]] | None:
-    rates = config.credit_rates.get(model)
-    if rates is None:
+    entry = _credit_rate_entry(model, config, observed_at=observed_at)
+    if entry is None:
         return None
-    metadata = config.rate_metadata.get(model, {})
+    rates, metadata = entry
     confidence = optional_str(metadata.get("confidence")) or "exact"
     note = optional_str(metadata.get("note")) or _direct_credit_rate_note(confidence)
     return model, rates, confidence, note, metadata
@@ -201,7 +220,10 @@ def _direct_credit_rate_note(confidence: str) -> str:
 
 
 def _resolve_alias_credit_rate(
-    model: str, config: UsageAllowanceConfig
+    model: str,
+    config: UsageAllowanceConfig,
+    *,
+    observed_at: object,
 ) -> tuple[str, dict[str, float], str, str, dict[str, Any]] | None:
     alias = config.aliases.get(model)
     if not alias:
@@ -209,10 +231,11 @@ def _resolve_alias_credit_rate(
     target = normalize_model(alias.get("model"))
     if not target:
         return None
-    rates = config.credit_rates.get(target)
-    if rates is None:
+    entry = _credit_rate_entry(target, config, observed_at=observed_at)
+    if entry is None:
         return None
-    metadata = {**config.rate_metadata.get(target, {}), **config.alias_metadata.get(model, {})}
+    rates, rate_metadata = entry
+    metadata = {**rate_metadata, **config.alias_metadata.get(model, {})}
     confidence = alias.get("confidence") or optional_str(metadata.get("confidence")) or "estimated"
     note = (
         alias.get("note")
@@ -220,6 +243,24 @@ def _resolve_alias_credit_rate(
         or (f"Mapped from {model} to {target} by local alias.")
     )
     return target, rates, confidence, note, metadata
+
+
+def _credit_rate_entry(
+    model: str,
+    config: UsageAllowanceConfig,
+    *,
+    observed_at: object,
+) -> tuple[dict[str, float], dict[str, Any]] | None:
+    if model not in config.local_rate_models:
+        revision = revision_for_timestamp(config.rate_revisions, observed_at)
+        if revision is not None:
+            rates = revision.credit_rates.get(model)
+            if rates is not None:
+                return rates, revision.rate_metadata.get(model, {})
+    rates = config.credit_rates.get(model)
+    if rates is None:
+        return None
+    return rates, config.rate_metadata.get(model, {})
 
 
 def estimate_standard_usage_credits(

@@ -103,6 +103,8 @@ class _RefreshStreamWriter:
         self.collect_content = not aggregate_only and default_parser_is_active()
 
     def run(self) -> RefreshStreamResult:
+        if not self.parse_plans:
+            return self._run_without_source_changes()
         with connect(self.db_path) as conn:
             init_db(conn)
             full_rebuild = self._is_full_rebuild(conn)
@@ -133,6 +135,36 @@ class _RefreshStreamWriter:
             stage_timings_seconds={
                 key: round(value, 6) for key, value in sorted(self.timings.values.items())
             },
+        )
+
+    def _run_without_source_changes(self) -> RefreshStreamResult:
+        """Skip source-derived writes when every persisted file checkpoint still matches."""
+
+        self._emit_initial_progress()
+        for phase, message in (
+            ("derived_state", "No changed usage rows required derived-state refresh"),
+            ("indexing_content", "No changed source logs required content indexing"),
+            ("syncing_facts", "No changed usage rows required compression fact refresh"),
+        ):
+            emit_refresh_progress(
+                self.progress_callback,
+                phase=phase,
+                status="skipped",
+                completed=0,
+                total=0,
+                message=message,
+            )
+        if self.derived_fact_sync is not None:
+            with connect(self.db_path) as conn:
+                init_db(conn)
+                conn.commit()
+                conn.execute("BEGIN")
+                self.derived_fact_sync(conn, (), frozenset(), False)
+        return RefreshStreamResult(
+            stats={},
+            parsed_events=0,
+            inserted_or_updated_events=0,
+            stage_timings_seconds={},
         )
 
     def _is_full_rebuild(self, conn: Any) -> bool:

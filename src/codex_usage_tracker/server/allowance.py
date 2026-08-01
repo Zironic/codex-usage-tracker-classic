@@ -210,7 +210,10 @@ def allowance_export_payload(
         rate_card_path=rate_card_path,
         include_archived=_include_archived(params, include_archived_default),
         window_kind=first_query_value(params.get("window_kind")),
-        limit=parse_report_limit(first_query_value(params.get("limit")), 10_000),
+        limit=_parse_export_limit(first_query_value(params.get("limit"))),
+        export_format=first_query_value(params.get("format")) or "verbose",
+        from_plan=first_query_value(params.get("from_plan")),
+        to_plan=first_query_value(params.get("to_plan")),
     )
     return report.payload
 
@@ -220,6 +223,16 @@ def _include_archived(params: dict[str, list[str]], include_archived_default: bo
         first_query_value(params.get("include_archived")),
         include_archived_default,
     )
+
+
+def _parse_export_limit(value: str | None) -> int | None:
+    if value is None or value.lower() in {"none", "null"}:
+        return None
+    try:
+        limit = int(value)
+    except ValueError as exc:
+        raise ValueError("limit must be a non-negative integer or None") from exc
+    return None if limit <= 0 else limit
 
 
 def _parse_history_limit(value: str | None) -> int:

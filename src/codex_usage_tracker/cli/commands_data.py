@@ -11,9 +11,7 @@ from codex_usage_tracker.allowance_intelligence import (
     build_allowance_history_report,
 )
 from codex_usage_tracker.cli.output import print_json
-from codex_usage_tracker.core.api_payloads import (
-    path_payload,
-)
+from codex_usage_tracker.core.api_payloads import path_payload
 from codex_usage_tracker.diagnostics.dedupe import (
     build_dedupe_diagnostics,
     render_dedupe_diagnostics,
@@ -22,9 +20,7 @@ from codex_usage_tracker.reports.support import (
     build_support_bundle,
     support_bundle_issue_guidance,
 )
-from codex_usage_tracker.store.api import (
-    export_usage_csv,
-)
+from codex_usage_tracker.store.api import export_usage_csv
 
 
 def _run_allowance_history(args: argparse.Namespace) -> int:
@@ -69,21 +65,62 @@ def _run_allowance_export(args: argparse.Namespace) -> int:
         include_archived=args.include_archived,
         window_kind=args.window_kind,
         limit=_allowance_report_limit(args.limit),
+        export_format=args.export_format,
+        from_plan=args.from_plan,
+        to_plan=args.to_plan,
     )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(report.payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        if args.export_format.startswith("compact"):
+            encoded = json.dumps(
+                report.payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        else:
+            encoded = json.dumps(
+                report.payload,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        args.output.write_text(encoded + "\n", encoding="utf-8")
     if args.as_json:
         print_json(report.payload)
         return 0
     if args.output is not None:
-        print(f"Wrote allowance evidence export to {args.output}")
+        coverage = report.payload.get("coverage")
+        if isinstance(coverage, dict):
+            print(
+                "Wrote allowance evidence export to "
+                f"{args.output} ({coverage.get('exported_observation_count', 0)} "
+                f"observations, {coverage.get('start_date')} to "
+                f"{coverage.get('end_date')}, "
+                f"truncated={coverage.get('truncated')})"
+            )
+            _print_plan_comparison(report.payload.get("plan_comparison"))
+        else:
+            print(f"Wrote allowance evidence export to {args.output}")
         return 0
     print(report.render())
     return 0
+
+
+def _print_plan_comparison(value: object) -> None:
+    if not isinstance(value, dict):
+        return
+    transition = value.get("transition")
+    relative = value.get("relative_meter_size")
+    if not isinstance(transition, dict) or not isinstance(relative, dict):
+        return
+    before_plan = transition.get("from_plan")
+    after_plan = transition.get("to_plan")
+    ratio_percent = relative.get("after_as_percent_of_before")
+    if before_plan and after_plan:
+        print(f"Plan comparison: {before_plan} -> {after_plan}")
+    if isinstance(ratio_percent, int | float):
+        print(f"Post-switch meter estimate: {float(ratio_percent):.1f}% of pre-switch")
+    print(f"Evidence: {value.get('status', 'unknown')}")
 
 
 def _allowance_report_limit(limit: int | None) -> int | None:

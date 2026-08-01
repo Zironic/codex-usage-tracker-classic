@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from codex_usage_tracker.interfaces.http.v2 import ApplicationHttpV2Services, HttpV2Facade
 from codex_usage_tracker.server.responses import send_json_response
+from codex_usage_tracker.server.statistics_route import statistics_response
 
 
 class _HttpV2Handler(Protocol):
@@ -46,6 +47,16 @@ class HttpV2RouteMixin:
     def _handle_http_v2(self, query: str) -> None:
         handler = cast(_HttpV2Handler, self)
         parsed = urlparse(handler.path)
+        if parsed.path == "/api/v2/statistics":
+            status, payload = statistics_response(
+                method=handler.command,
+                stream=handler.rfile,
+                content_length=handler.headers.get("Content-Length"),
+                content_type=handler.headers.get("Content-Type", ""),
+                db_path=handler._db_path,
+            )
+            send_json_response(cast(Any, self), status, payload)
+            return
         response = self._http_v2_facade.handle_stream(
             method=handler.command,
             path=parsed.path,

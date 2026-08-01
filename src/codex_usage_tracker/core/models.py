@@ -75,6 +75,10 @@ class UsageEvent:
     fast: int | None = None
     service_tier_source: str | None = None
     service_tier_confidence: str | None = None
+    # ``None`` is retained for legacy rows whose session-id provenance cannot
+    # be reconstructed (for example a historical literal ``"unknown"``).
+    # Newly parsed rows explicitly carry 0 or 1.
+    session_id_known: int | None = 1
 
     @property
     def uncached_input_tokens(self) -> int:

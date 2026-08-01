@@ -8,7 +8,10 @@ from collections.abc import Mapping, Sequence
 from statistics import median
 from typing import Any
 
+from codex_usage_tracker.allowance_intelligence.cycles import normalize_plan_type
+
 _GRANULARITIES = {"cycle", "week", "month"}
+_INVALID_PLAN_TYPES = {"", "unknown", "mixed"}
 
 
 def build_capacity_history(
@@ -24,7 +27,7 @@ def build_capacity_history(
     if trailing_window < 4:
         raise ValueError("trailing_window must be at least 4")
     eligible = sorted(
-        (_normalized_cycle(row) for row in cycles if _eligible_cycle(row)),
+        (_normalized_cycle(row) for row in eligible_capacity_cycles(cycles)),
         key=lambda row: (str(row["completed_at"]), str(row["cycle_id"])),
     )
     points = _rolling_points(eligible, trailing_window=trailing_window)
@@ -102,19 +105,54 @@ def load_capacity_cycles(
     return cycles
 
 
-def _eligible_cycle(row: Mapping[str, Any]) -> bool:
-    value = row.get("credits_per_percent")
+def eligible_capacity_cycles(
+    cycles: Sequence[Mapping[str, Any]],
+    *,
+    require_known_plan: bool = False,
+) -> list[dict[str, Any]]:
+    """Return completed, quality-approved, priced capacity cycles."""
+    return [
+        dict(row)
+        for row in cycles
+        if capacity_cycle_exclusion_reason(
+            row,
+            require_known_plan=require_known_plan,
+        )
+        is None
+    ]
+
+
+def capacity_cycle_exclusion_reason(
+    row: Mapping[str, Any],
+    *,
+    require_known_plan: bool = False,
+) -> str | None:
+    """Explain why one cycle cannot vote in capacity comparisons."""
+    if row.get("status") == "open":
+        return "open_cycle"
+    if row.get("status") == "ambiguous":
+        return "ambiguous_cycle"
+    if row.get("status") != "completed":
+        return "incomplete_cycle"
+    if row.get("quality_grade") not in {"high", "medium"}:
+        return "low_quality"
     coverage = row.get("price_coverage")
-    return bool(
-        row.get("status") == "completed"
-        and row.get("quality_grade") in {"high", "medium"}
-        and isinstance(coverage, int | float)
-        and float(coverage) >= 0.95
-        and int(row.get("conflict_count") or 0) == 0
-        and isinstance(value, int | float)
-        and math.isfinite(float(value))
-        and float(value) > 0
-    )
+    if not isinstance(coverage, int | float) or float(coverage) < 0.95:
+        return "low_pricing_coverage"
+    if int(row.get("conflict_count") or 0) != 0:
+        return "conflict"
+    if require_known_plan:
+        plan_type = normalize_plan_type(row.get("plan_type"))
+        if plan_type == "mixed":
+            return "mixed_plan"
+        if plan_type in _INVALID_PLAN_TYPES:
+            return "unknown_plan"
+    value = row.get("credits_per_percent")
+    if not isinstance(value, int | float) or not math.isfinite(float(value)):
+        return "missing_capacity"
+    if float(value) <= 0:
+        return "non_positive_capacity"
+    return None
 
 
 def _normalized_cycle(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -124,7 +162,7 @@ def _normalized_cycle(row: Mapping[str, Any]) -> dict[str, Any]:
         "credits_per_percent": round(float(row["credits_per_percent"]), 6),
         "quality_grade": str(row.get("quality_grade") or "unknown"),
         "price_coverage": round(float(row.get("price_coverage") or 0), 6),
-        "plan_type": str(row.get("plan_type") or "unknown"),
+        "plan_type": normalize_plan_type(row.get("plan_type")),
         "regime_id": None,
     }
 

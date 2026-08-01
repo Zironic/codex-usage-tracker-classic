@@ -10,6 +10,7 @@ from codex_usage_tracker.cli.output import print_json
 from codex_usage_tracker.core.api_payloads import path_payload
 from codex_usage_tracker.core.projects import write_project_template
 from codex_usage_tracker.pricing.allowance import (
+    CODEX_RATE_CARD_URL,
     update_rate_card,
     write_allowance_from_text,
     write_allowance_template,
@@ -100,7 +101,7 @@ def run_init_allowance(args: argparse.Namespace) -> int:
         output=output,
         schema="codex-usage-tracker-init-allowance-v1",
         path_key="allowance_path",
-        message=f"Wrote allowance template to {output}",
+        message=f"Wrote local allowance template to {output}",
     )
 
 
@@ -131,10 +132,21 @@ def run_parse_allowance(args: argparse.Namespace) -> int:
 
 def run_update_rate_card(args: argparse.Namespace) -> int:
     """Refresh the local Codex credit rate card."""
-    result = update_rate_card(
-        args.output or args.rate_card,
-        source_file=args.source_file,
-    )
+    source_file = args.source_file
+    output = args.output or args.rate_card
+    fallback_reason: str | None = None
+    try:
+        result = update_rate_card(
+            output,
+            source_file=source_file,
+            source_url=None if source_file is not None else CODEX_RATE_CARD_URL,
+        )
+    except RuntimeError as exc:
+        if source_file is not None:
+            raise
+        fallback_reason = str(exc)
+        result = update_rate_card(output)
+
     if args.as_json:
         print_json(
             {
@@ -143,17 +155,44 @@ def run_update_rate_card(args: argparse.Namespace) -> int:
                 "source_url": result.source_url,
                 "fetched_at": result.fetched_at,
                 "model_count": result.model_count,
+                "unpriced_model_count": result.unpriced_model_count,
                 "alias_count": result.alias_count,
+                "live_fetch": result.live_fetch,
+                "revision_changed": result.revision_changed,
+                "effective_at": result.effective_at,
+                "effective_at_precision": result.effective_at_precision,
+                "fallback_reason": fallback_reason,
                 "backup_path": path_payload(result.backup_path) if result.backup_path else None,
             }
         )
         return 0
+
+    if fallback_reason is not None:
+        print(
+            "Warning: live OpenAI rate-card fetch failed; wrote the bundled snapshot instead. "
+            f"Reason: {fallback_reason}",
+            file=sys.stderr,
+        )
+    if result.live_fetch:
+        source_label = "live OpenAI page"
+    elif source_file is not None:
+        source_label = "supplied snapshot"
+    else:
+        source_label = "bundled fallback snapshot"
     print(
-        f"Wrote {result.model_count} Codex credit rates and {result.alias_count} aliases "
-        f"to {result.path}"
-        + (f" from {result.source_url}" if result.source_url else "")
+        f"Wrote {result.model_count} Codex credit rates, "
+        f"{result.unpriced_model_count} explicitly unpriced models, and "
+        f"{result.alias_count} aliases to {result.path} from {source_label}"
+        + (f" ({result.source_url})" if result.source_url else "")
         + (f" (backup: {result.backup_path})" if result.backup_path else "")
     )
+    if result.revision_changed:
+        print(
+            "Recorded changed rates from "
+            f"{result.effective_at} (precision={result.effective_at_precision})."
+        )
+    else:
+        print("Published numeric rates match the active local snapshot; no revision was added.")
     return 0
 
 

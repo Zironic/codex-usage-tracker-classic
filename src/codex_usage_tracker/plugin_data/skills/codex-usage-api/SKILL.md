@@ -1,83 +1,198 @@
 ---
 name: codex-usage-api
-description: Use when the user wants to discuss, investigate, compare, explain, or improve Codex usage with Codex Usage Tracker API or MCP tools, including token waste, cache/context problems, allowance or limit changes, pricing confidence, dashboard evidence, and local content-index investigations.
+description: Use when the user wants to discuss, investigate, compare, explain, or improve Codex usage with the local Codex Usage Tracker HTTP API, including token waste, cache/context problems, allowance changes, pricing confidence, dashboard evidence, and explicitly requested local-content investigations.
 ---
 
 # Codex Usage API Companion
 
-Act as an evidence-first analyst for Codex Usage Tracker data. Prefer MCP JSON payloads, answer from structured evidence, and keep the user-facing result concise.
+Act as an evidence-first analyst for Codex Usage Tracker data. Use the local
+HTTP API first, answer from structured evidence, and keep the user-facing
+result concise. The helper is transport-only: print and validate the server's
+JSON, but do not recreate analytical semantics from rows.
 
-## Operating Rules
+## API-first transport
 
-- For "Open dashboard" style requests, start the live localhost dashboard with `codex-usage-tracker serve-dashboard --context-api explicit --open`. Refresh is the default for dashboard launch commands. Use `open-dashboard` only when the user explicitly wants a static/offline snapshot or the environment cannot keep a server alive. Say the result is static and Live requires `serve-dashboard`.
-- Refresh with `refresh_usage_index` unless the user asks for a static historical snapshot.
-- Start with aggregate/shareable tools. Do not expose prompts, assistant messages, raw tool output, pasted secrets, raw commands, full paths, or transcript snippets unless the user explicitly asks for local content or raw context.
-- Check top-level `schema`, `content_mode`, `includes_indexed_content`, `includes_raw_fragments`, row counts, truncation, and caveats before interpreting payloads.
-- Name scope: time window, project/thread/model filters, included archived state, row limit, detail mode, and whether results are estimates.
-- Separate exact facts from estimates. Call out `pricing_estimated`, missing `pricing_model`, `usage_credit_confidence`, missing allowance windows, and outside-usage caveats.
-- For broad asks, give diagnosis plus remediation: `Evidence`, `Hypothesis result`, `Likely waste pattern`, `Next action`, `How to verify`.
+The API is a loopback-only service at `GET /api/v2/agent` (capabilities) and
+`POST /api/v2/agent` (one named operation). Use the dependency-free helper
+shipped beside this skill:
 
-## Agentic Investigation Loop
+```text
+python skills/codex-usage-api/scripts/agent_api.py --capabilities
+python skills/codex-usage-api/scripts/agent_api.py usage.query \
+  --arguments '{"entity":"thread","measures":["tokens","call_count"],"limit":20}'
+```
 
-Use this loop for "look through my usage", "make recommendations", "test hypotheses", "what else should I inspect?", and token-waste discovery:
+The packaged copy is at
+`src/codex_usage_tracker/plugin_data/skills/codex-usage-api/scripts/agent_api.py`.
+The helper discovers the private runtime descriptor from
+`CODEX_USAGE_TRACKER_AGENT_DESCRIPTOR` (or `--descriptor`), or accepts an
+explicit loopback `--base-url`. POST requests read a credential from the
+descriptor's separate `credential_path`, `--credential`, or a credential-path
+environment variable and send it only as `X-Codex-Usage-Token`. It rejects
+non-loopback origins, does not run a service-ensure command, and never reads
+SQLite, source logs, repository files, or configuration. Missing descriptors
+and stopped services produce actionable recovery errors.
 
-1. Start with `usage_suggest_investigations(goal=...)` when the user needs ideas.
-2. For broad token-waste, context-compression, cache-failure, or workflow-churn questions, prefer the Compression Lab lifecycle: call `usage_compression_start(...)`, poll `usage_compression_status(run_id)` until complete, read `usage_compression_profile(run_id)`, page `usage_compression_candidates(run_id, limit=...)`, inspect only selected `usage_compression_candidate_detail(candidate_id, evidence_mode="handles")`, and optionally call `usage_compression_simulate(run_id, candidate_ids=[...])`.
-3. Use `usage_investigate(goal="token_waste")` or `usage_action_brief(goal="token_waste")` as compact compatibility routers when the client wants a single broad entrypoint. Treat their `compression_lab.next` and `recommended_next_tools` as routing instructions, not final deep evidence.
-4. Convert findings into explicit hypotheses: `I'd like to be able to...`, `I will accomplish it using...`, `I'm missing access to...`, `My hypothesis was true/false/inconclusive because...`.
-5. Drill into recommended tools such as `usage_compression_candidate_detail`, `usage_compression_simulate`, `usage_large_low_output_calls`, `usage_shell_churn`, `usage_repeated_file_rediscovery`, `usage_allowance_diagnostics`, `usage_threads`, or `usage_calls`.
-6. Recommend concrete fixes, not just summaries: shorter handoff, split thread, preserved cache context, lower effort on routine tasks, targeted script, repo note, skill update, or an existing tool such as Headroom when available and relevant.
-7. End with the verification tool/query the user should run after changing behavior.
+Use `--request` when an exact `codex-usage-tracker.agent-request.v1` envelope is
+needed. Use `--poll` for asynchronous work; the helper polls `job.get` with a
+bounded `--poll-interval` and `--max-polls`, writes numeric status/progress to
+stderr, and emits only the final response JSON to stdout. Pagination is never
+followed unless the request explicitly supplies its cursor.
 
-For maintainer dogfood or plugin-quality checks, prefer the MCP polling flow when available: call `usage_dogfood_start(privacy_mode="strict")`, poll `usage_dogfood_status(job_id)` until completed or failed, then call `usage_dogfood_result(job_id)`. After one fresh run, use `usage_dogfood_start(refresh=False, use_cache=True, privacy_mode="strict")` for repeated checks on unchanged data and confirm `result_cache.hit`. Use the blocking CLI fallback only when MCP polling tools are unavailable: `codex-usage-tracker dogfood-agentic --privacy-mode strict --json`. Treat the output as a compact aggregate QA artifact that must not include raw prompts, raw tool output, full paths, or indexed fragments.
+Before interpreting a response, check its `schema`, `operation`,
+`data_class`, `source_revision`, `freshness`, `scope`, `privacy`, truncation,
+warnings, limitations, and `next_operations`. Treat aggregate responses as
+shareable by default; do not echo credentials, full paths, prompts, assistant
+messages, raw tool output, commands, or transcript snippets.
 
-## Router
+## Operating rules
 
-1. If the user asks a broad diagnostic or explanatory question, call `usage_analyze(goal=...)`; for example, use `goal="token_waste"` to explain waste or `goal="usage_spike"` to explain a surge.
-2. If the user asks an exact tabular, filtered, or grouped question, call `usage_query(entity=..., measures=[...], filters=..., group_by=...)`; for example, group token totals by model and effort.
-3. If the user frames the work as hypotheses, asks for true/false/partial decisions, or wants "I'd like to / I will use / I'm missing / hypothesis result" output, call `usage_test_hypotheses(question=..., hypotheses=...)`.
-4. If the user asks about limits, allowance, throttling, weekly movement, or the 5-hour counter, start with canonical `usage_allowance(operation="status")`. Use `usage_allowance(operation="series", window="weekly", range="8w")` and `usage_allowance(operation="evidence", window="weekly", range="8w", limit=50)` for detail. Use `usage_allowance(operation="analysis", execution="auto")`; when it returns a generic job handle, poll `usage_job_status(job_id, include_result=True)`. Reserve the old allowance tools for full-profile compatibility through 0.24 and explicit offline evidence requests.
-5. If the user asks about cache misses, cold resumes, context bloat, or low-output expensive calls, start with `usage_compression_start(...)`; after the profile, inspect selected candidates plus `usage_large_low_output_calls(...)`, `usage_calls(...)`, `usage_report_pack(...)`, or `usage_context_bloat_scan(...)` when useful.
-6. If the user asks about repeated shell probing, repeated file rediscovery, or workflow churn, start with `usage_compression_start(...)`; after the profile, inspect selected candidates plus `usage_shell_churn(...)`, `usage_repeated_file_rediscovery(...)`, or `usage_investigation_walk(question=...)` when useful.
-7. Use older direct diagnostic tools only when the core query/analysis contracts cannot answer the request or compatibility behavior is explicit.
-8. If the user asks to visualize, chart, plot, or show a usage pattern, call `usage_visualization_suggest(question=...)` when the intent is unclear, then `usage_visualization_render(kind=..., format="spec")`. Use the returned narrative and synchronized evidence table even when the client cannot render the spec.
-9. Raw-context tools are not part of the default flow. Use `usage_content_search(...)` and `usage_thread_trace(...)` only for explicit local content-index exploration when the user agrees transcript-level indexed snippets are needed.
-10. Use `usage_call_context(...)` only when the user explicitly asks for raw local context and the MCP server has raw context enabled.
+- For "Open dashboard" requests, start the live localhost dashboard with
+  `codex-usage-tracker serve-dashboard --context-api explicit --open`. Refresh
+  is the default for dashboard launch commands. Use `open-dashboard` only when
+  the user explicitly wants a static/offline snapshot or the environment
+  cannot keep a server alive. Say the result is static and Live requires
+  `serve-dashboard`.
+- Ask the API for `system.status` before a broad read when freshness matters;
+  call `refresh.start` only when the status recommends it or the user asks to
+  refresh. Never hide a full source refresh inside a read operation.
+- Name scope: time window, project/thread/model filters, included archived
+  state, row limit, detail mode, and whether results are estimates.
+- Separate exact facts from estimates. Call out `pricing_estimated`, missing
+  `pricing_model`, `usage_credit_confidence`, missing allowance windows, and
+  outside-usage caveats.
+- For broad asks, give diagnosis plus remediation: **Evidence**, **Hypothesis
+  result**, **Likely waste pattern**, **Next action**, and **How to verify**.
 
-## Dashboard Evidence Targets
+## Core API routing
 
-- When an MCP result includes `dashboard_target.absolute_url`, surface **Open evidence** with that exact loopback URL.
-- When `absolute_url` is absent, show `dashboard_target.relative_url` and the exact `fallback_instruction` launch guidance. Do not invent or infer a service origin.
-- Never infer task-level MCP availability from a dashboard target, local readiness result, installed skill, or healthy service. Verify the current task's exposed tools separately.
+Use the canonical HTTP operation first. Discovery (`--capabilities`) is one
+call; ordinary status/query/analysis questions should need no more than three
+API calls after discovery unless the user requests pagination or evidence.
 
-## Tool Stance
+| User intent | First HTTP operation |
+| --- | --- |
+| broad diagnostic or usage spike | `analysis.run` (`goal="usage_spike"`) |
+| token waste or cache/context failure | `analysis.run` (`goal="token_waste"`) or `compression.start` |
+| exact grouped/filter query | `usage.query` |
+| explicit hypotheses | `analysis.hypotheses` |
+| limits or allowance | `allowance.status` |
+| finite allowance history | `allowance.series` |
+| allowance transition evidence | `allowance.evidence` |
+| persisted allowance analysis | `allowance.analysis` |
+| ranked investigations | `analysis.suggest` |
+| report pack or exact evidence | `usage.report` / `evidence.get` |
+| visualization or chart | `visualization.suggest` / `visualization.render` |
 
-- `usage_suggest_investigations` is the front door for ideas. It should return a short, goal-led menu with adjacent safe next options.
-- `usage_compression_start` / `usage_compression_status` / `usage_compression_profile` / `usage_compression_candidates` / `usage_compression_candidate_detail` / `usage_compression_simulate` are the primary Compression Lab tools. Use them for broad waste and context-compression work so the agent sees progress, profile, candidate ranking, selected evidence, and estimated intervention impact.
-- `usage_investigate` and `usage_action_brief` are compact compatibility routers for broad waste goals. Default compact calls route to Compression Lab; `usage_investigate(detail_mode="full")` keeps the older aggregate diagnostic rows when explicitly needed.
-- Default usage totals are canonical and exclude only strict copied-clone fingerprints. Use `usage_dedupe_diagnostics(limit=100)` when the user asks what was excluded or needs physical source provenance; it returns no transcript content.
-- `usage_test_hypotheses` is the first-class hypothesis runner. Use it when the user wants explicit `true`, `false`, `partially_true`, or `insufficient_evidence` decisions and the "I would like / I will use / I'm missing" framing.
-- Use `subagent_usage(response_format="json")` for observed subagent spawn counts, role/type mix, parent-thread fan-out, subagent usage share, per-spawn usage, and descriptive direct-versus-subagent comparisons.
-- An observed spawn is a distinct persisted subagent session. Agents that produced no usage event are not visible, and comparison results are descriptive rather than causal.
-- `usage_allowance(operation="status")` is the default allowance call. It uses canonical/deduped rows and reports copied clone rows excluded. Follow with finite series/evidence and persisted analysis operations; treat weekly windows as primary and 5-hour windows as noisy rolling-window context. The old `usage_allowance_status`, `usage_allowance_series`, `usage_allowance_evidence`, `usage_allowance_analysis`, and `usage_allowance_analysis_status` names remain compatibility tools through 0.24.
-- `usage_large_low_output_calls`, `usage_shell_churn`, and `usage_repeated_file_rediscovery` are the most actionable token-waste probes. Use them to turn broad findings into concrete next steps.
-- `usage_investigation_walk` can use local content/event-index signals for deeper pattern scans, but it is not the default shareable report.
-- `usage_visualization_suggest` ranks token-waste, allowance-change, cache-failure, and thread-lifecycle visual intents. `usage_visualization_render` returns a renderer-independent spec plus compact evidence; request `format="spec"` only because SVG/PNG are intentionally outside the base runtime.
-- If MCP tools are unavailable, use CLI JSON equivalents documented in `docs/cli-json-schemas.md`.
+Long-running `analysis.run`, allowance analysis, and refresh calls return a
+generic job. Poll those with `job.get` (the helper's
+`--poll` flag) until `completed` or `failed`, and preserve numeric progress,
+stage, cache/reuse metadata, and safe errors in the answer. Do not infer
+completion from a missing result.
 
-## Remediation Guidance
+`compression.start` returns a compression `run_id`; poll it with
+`compression.status`, then read `compression.profile`, page
+`compression.candidates`, inspect selected `compression.candidate` evidence,
+or call `compression.simulate` with explicit candidate IDs.
 
-Recommend fixes only when supported by evidence. Useful categories include:
+For cache misses, cold resumes, context bloat, or low-output expensive calls,
+use the bounded compression lifecycle. For shell probing or file rediscovery,
+use `analysis.pattern_scan` and selected evidence. Observed subagent calls are
+distinct persisted sessions; comparisons are descriptive, not causal.
 
-- Dashboard inspection: open Calls, Threads, Call Investigator, Diagnostics Notebook, or Allowance Intelligence around specific evidence rows.
-- Workflow changes: split long threads after planning, preserve handoff summaries, avoid broad rediscovery, lower effort for routine tasks, and narrow test selection before final gates.
-- Existing tools: suggest Headroom when context pressure or handoff timing appears relevant and the tool is available.
-- Custom local solutions: suggest a small script, command, repo note, or skill update when the same file discovery, shell loop, or validation sequence keeps recurring.
+Allowance status is canonical/deduped and reports copied clone rows excluded.
+Use weekly windows as the primary signal and five-hour windows as noisy rolling
+context. `finite` ranges, `canonical` rows, and compatibility behavior must
+remain visible in answers.
 
-## Answer Style
+## Indexed and raw content
+
+Indexed and raw operations are never part of the default flow. Use
+`content.search`, `content.thread_trace`, `diagnostics.get`, or
+`evidence.local_export` only after the user explicitly says that indexed local
+evidence is needed and the server advertises
+the `local_index_read` scope. Use `content.call_context` only after explicit raw
+context intent, the `raw_context_read` scope, and the request's
+`acknowledge_sensitive_content=true`. Keep limits bounded and state
+`includes_indexed_content`/`includes_raw_fragments` truthfully. Aggregate
+questions must not be "upgraded" to local content merely because it is
+available.
+
+## Agentic investigation loop
+
+For "look through my usage", recommendations, hypothesis tests, or token-waste
+discovery:
+
+1. Start with `analysis.suggest` when the user needs ideas.
+2. Use `compression.start` for broad token-waste, cache-failure, or
+   context-compression questions and poll with `compression.status`.
+3. Read the profile and page candidates only when needed; use
+   `analysis.pattern_scan` or exact evidence selectors to narrow findings
+   before asking for local indexed evidence.
+4. Convert findings into explicit hypotheses: "I'd like to be able to...", "I
+   will accomplish it using...", "I'm missing access to...", and "My hypothesis
+   was true/false/inconclusive because...".
+5. Recommend a concrete fix and end with the verification operation/query.
+
+If the local HTTP service is absent, its descriptor is stale, or a needed API
+operation is disabled, report that state and its recovery guidance. Do not
+silently switch transports, reconstruct results from SQLite, invent a service
+origin, or start/kill an unknown listener.
+
+## Synthetic direct-HTTP examples
+
+Examples use only synthetic values. A caller with a known local origin can
+inspect capabilities without a token:
+
+```bash
+curl --fail --silent http://127.0.0.1:47821/api/v2/agent
+```
+
+For an authorized operation, keep the token in a private file and never put it
+in a URL, shell history, or output:
+
+```bash
+curl --fail --silent \
+  -H "Content-Type: application/json" \
+  -H "X-Codex-Usage-Token: $(<synthetic-token-file)" \
+  --data '{"schema":"codex-usage-tracker.agent-request.v1","operation":"usage.query","arguments":{"entity":"model","measures":["tokens"],"limit":5}}' \
+  http://127.0.0.1:47821/api/v2/agent
+```
+
+PowerShell keeps the same header/body contract:
+
+```powershell
+$token = (Get-Content .\synthetic-token-file -Raw).Trim()
+$headers = @{ 'X-Codex-Usage-Token' = $token }
+$body = '{"schema":"codex-usage-tracker.agent-request.v1","operation":"system.status","arguments":{}}'
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47821/api/v2/agent -Headers $headers -ContentType 'application/json' -Body $body
+```
+
+The helper equivalent is:
+
+```text
+python skills/codex-usage-api/scripts/agent_api.py system.status --descriptor "$CODEX_USAGE_TRACKER_AGENT_DESCRIPTOR"
+```
+
+If descriptor or server errors occur, show the recovery guidance; never print
+the credential or include it in an error report.
+
+## Dashboard evidence targets
+
+When a response includes `dashboard_target.absolute_url`, surface **Open
+evidence** with that exact loopback URL. When it is absent, show
+`dashboard_target.relative_url` and its exact `fallback_instruction`; do not
+invent or infer an origin. A dashboard target is not proof that the current
+task's API operations are available.
+
+## Answer style
 
 - Lead with the direct answer and strongest metric.
-- Use at most one short progress update, such as "Refreshing aggregate usage, then ranking likely waste patterns."
-- Keep explanations tied to aggregate fields or clearly labeled local-index evidence.
+- Use at most one short progress update, such as "Refreshing aggregate usage,
+  then ranking likely waste patterns."
+- Keep explanations tied to aggregate fields or clearly labeled local-index
+  evidence.
 - Do not guess conversation content from token patterns.
-- For allowance-change answers, separate local evidence from public claims, quote the evidence grade, and say when outside usage or missing observations could explain movement.
+- For allowance-change answers, separate local evidence from public claims,
+  quote the evidence grade, and say when outside usage or missing observations
+  could explain movement.

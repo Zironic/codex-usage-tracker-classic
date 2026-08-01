@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react';
+import { ChartNoAxesCombined, type LucideIcon } from 'lucide-react';
 import { isDashboardViewId, type DashboardViewId } from '../routes/dashboardSearch';
 import {
   evidenceConsolePrimaryRoutes,
@@ -14,9 +14,20 @@ export type NavItem = {
   icon: LucideIcon;
 };
 
-export const navItems: NavItem[] = evidenceConsolePrimaryRoutes.map(({ id, label, description, icon }) => ({
+const primary = evidenceConsolePrimaryRoutes.map(({ id, label, description, icon }) => ({
   id, label, description, icon,
 }));
+
+export const navItems: NavItem[] = [
+  primary[0],
+  {
+    id: 'reports',
+    label: 'Statistics',
+    description: 'Usage distributions and trends',
+    icon: ChartNoAxesCombined,
+  },
+  ...primary.slice(1),
+];
 
 export const settingsNavItem: NavItem = evidenceConsoleSettingsRoute;
 

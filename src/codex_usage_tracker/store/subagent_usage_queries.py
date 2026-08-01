@@ -30,7 +30,8 @@ _METRIC_EXPRESSIONS = """
     COUNT(*) AS calls,
     COUNT(DISTINCT session_id || ':' || coalesce(turn_id, '')) AS turns,
     COUNT(DISTINCT CASE
-      WHEN nullif(trim(session_id), '') IS NOT NULL THEN session_id
+      WHEN session_id_known = 1
+       AND nullif(trim(session_id), '') IS NOT NULL THEN session_id
     END) AS observed_spawns,
     coalesce(SUM(input_tokens), 0) AS input_tokens,
     coalesce(SUM(cached_input_tokens), 0) AS cached_input_tokens,
@@ -56,6 +57,7 @@ def query_subagent_usage_buckets(
     db_path: Path = DEFAULT_DB_PATH,
     *,
     since: str | None = None,
+    until: str | None = None,
     parent_thread: str | None = None,
     agent_role: str | None = None,
     subagent_type: str | None = None,
@@ -66,6 +68,7 @@ def query_subagent_usage_buckets(
     _validate_limit(limit)
     where_sql, base_params = usage_where_clause(
         since=since,
+        until=until,
         thread=parent_thread,
         table_alias="usage_events",
         include_archived=include_archived,
@@ -79,7 +82,8 @@ def query_subagent_usage_buckets(
     )
     attributed_where = _append_clause(
         subagent_where,
-        "nullif(trim(usage_events.session_id), '') IS NOT NULL",
+        "usage_events.session_id_known = 1"
+        " AND nullif(trim(usage_events.session_id), '') IS NOT NULL",
     )
 
     with connect(db_path) as conn:
@@ -244,9 +248,10 @@ def _parent_role_mix(
         f"""
         SELECT {parent_expression} AS group_key,
                {role_expression} AS agent_role,
-               COUNT(DISTINCT CASE
-                 WHEN nullif(trim(session_id), '') IS NOT NULL THEN session_id
-               END) AS observed_spawns,
+                COUNT(DISTINCT CASE
+                  WHEN session_id_known = 1
+                   AND nullif(trim(session_id), '') IS NOT NULL THEN session_id
+                END) AS observed_spawns,
                COUNT(*) AS calls,
                coalesce(SUM(total_tokens), 0) AS total_tokens
         FROM {_CANONICAL_SOURCE}
@@ -273,17 +278,29 @@ def _coverage(
         f"""
         SELECT
             COUNT(CASE
-              WHEN nullif(trim(session_id), '') IS NULL THEN 1
+              WHEN session_id_known = 0
+                OR (session_id_known = 1 AND nullif(trim(session_id), '') IS NULL)
+                THEN 1
             END) AS missing_session_rows,
             coalesce(SUM(CASE
-              WHEN nullif(trim(session_id), '') IS NULL THEN total_tokens ELSE 0
+              WHEN session_id_known = 0
+                OR (session_id_known = 1 AND nullif(trim(session_id), '') IS NULL)
+                THEN total_tokens ELSE 0
             END), 0) AS missing_session_tokens,
+            COUNT(CASE
+              WHEN session_id_known IS NULL THEN 1
+            END) AS ambiguous_session_rows,
+            coalesce(SUM(CASE
+              WHEN session_id_known IS NULL THEN total_tokens ELSE 0
+            END), 0) AS ambiguous_session_tokens,
             COUNT(DISTINCT CASE
-              WHEN nullif(trim(session_id), '') IS NOT NULL
+              WHEN session_id_known = 1
+               AND nullif(trim(session_id), '') IS NOT NULL
                AND nullif(trim(agent_role), '') IS NULL THEN session_id
             END) AS missing_role_spawns,
             COUNT(DISTINCT CASE
-              WHEN nullif(trim(session_id), '') IS NOT NULL
+              WHEN session_id_known = 1
+               AND nullif(trim(session_id), '') IS NOT NULL
                AND nullif(trim(subagent_type), '') IS NULL THEN session_id
             END) AS missing_type_spawns
         FROM {_CANONICAL_SOURCE}
