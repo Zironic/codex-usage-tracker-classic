@@ -2,7 +2,10 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import { useEffect, useMemo, type ReactNode } from 'react';
 import type { CallRow, ContextRuntime, DashboardModel } from '../../api/types';
-import { callsInfiniteQueryOptions } from '../../data/exploreQueries';
+import {
+  callsInfiniteQueryOptions,
+  loadCallsPage,
+} from '../../data/exploreQueries';
 import { csvDateStamp, downloadCsv, rowsToCsv } from '../shared/exportCsv';
 import { copyText } from '../shared/copyText';
 import { presetLabel } from '../shared/investigationPresets';
@@ -20,6 +23,13 @@ import {
   readSourceFilterParam,
   readTimeFilterParam,
 } from './callsUrlState';
+import {
+  buildCompactCallsCsv,
+  buildCompactCallsExport,
+  downloadText,
+  type CallsExportMode,
+  type CallsExportScope,
+} from './callsExport';
 import { filterCalls, sortCalls } from './callsFilterSort';
 import { callsEndpointState } from './callsEndpointState';
 import { CallsExplorerView } from './CallsExplorerView';
@@ -163,8 +173,8 @@ export function CallsPage({
       }),
     [activePreset, confidenceFilter, contextRuntime, dateEnd, dateStart, effortFilter, focusedEndpointsEnabled, globalQuery, localQuery, modelFilter, sortKey, sourceFilter, scopeSince, timeFilter],
   );
-  const focusedCallsQuery = useInfiniteQuery({
-    ...callsInfiniteQueryOptions({
+  const focusedCallsRequest = useMemo(
+    () => ({
       runtime: contextRuntime,
       includeArchived,
       sourceKey,
@@ -174,6 +184,10 @@ export function CallsPage({
       direction: sortDirection,
       pageSize: callsTablePageSize,
     }),
+    [contextRuntime, endpointState.filters, endpointState.sort, includeArchived, sortDirection, sourceKey, sourceRevision],
+  );
+  const focusedCallsQuery = useInfiniteQuery({
+    ...callsInfiniteQueryOptions(focusedCallsRequest),
     enabled: endpointState.enabled,
     placeholderData: (previous) => previous,
   });
@@ -256,9 +270,70 @@ export function CallsPage({
     }
   }, [confidenceFilter, dateEnd, dateStart, density, effortFilter, localQuery, modelFilter, selectedRecordId, sortDirection, sortKey, sourceFilter, timeFilter, visibleCallRows]);
 
-  function exportCalls() {
-    downloadCsv(`codex-calls-${csvDateStamp()}.csv`, rowsToCsv(sortedCalls, callCsvColumns));
-    setExportStatus(`Exported ${sortedCalls.length} calls`);
+  async function exportCalls(mode: CallsExportMode): Promise<void> {
+    setExportStatus('Preparing complete filtered export…');
+    try {
+      const livePage = endpointState.enabled
+        ? await loadCallsPage(
+            { ...focusedCallsRequest, pageSize: 0 },
+            0,
+            0,
+          )
+        : null;
+      const exportRows = livePage?.rows ?? sortedCalls;
+      const matchedCallCount = livePage?.totalMatchedRows ?? exportRows.length;
+      const scope: CallsExportScope = {
+        source: livePage ? 'live-api' : 'loaded-snapshot',
+        filters: exportFilterSummary(),
+        sort: endpointState.sort,
+        direction: sortDirection,
+        includeArchived,
+        matchedCallCount,
+        completeResultSet: livePage
+          ? !livePage.hasMore && exportRows.length === matchedCallCount
+          : true,
+        sourceRevision,
+      };
+      const date = csvDateStamp();
+      if (mode === 'compact-json') {
+        const payload = buildCompactCallsExport(exportRows, scope);
+        downloadText(
+          `codex-calls-compact-${date}.json`,
+          JSON.stringify(payload),
+          'application/json;charset=utf-8',
+        );
+      } else if (mode === 'compact-csv') {
+        downloadCsv(
+          `codex-calls-compact-${date}.csv`,
+          buildCompactCallsCsv(exportRows),
+        );
+      } else {
+        downloadCsv(
+          `codex-calls-full-${date}.csv`,
+          rowsToCsv(exportRows, callCsvColumns),
+        );
+      }
+      const sourceLabel = livePage ? 'complete filtered result' : 'loaded snapshot';
+      setExportStatus(`Exported ${exportRows.length.toLocaleString()} calls from ${sourceLabel}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown export error';
+      setExportStatus(`Export failed: ${message}`);
+    }
+  }
+
+  function exportFilterSummary(): Record<string, string | boolean | null> {
+    return {
+      query: [globalQuery.trim(), localQuery.trim()].filter(Boolean).join(' ') || null,
+      model: modelFilter === 'all' ? null : modelFilter,
+      effort: effortFilter === 'all' ? null : effortFilter,
+      confidence: confidenceFilter === 'all' ? null : confidenceFilter,
+      source: sourceFilter === 'all' ? null : sourceFilter,
+      time: timeFilter === 'all' ? null : timeFilter,
+      date_start: dateStart || null,
+      date_end: dateEnd || null,
+      active_preset: activePreset || null,
+      include_archived: includeArchived,
+    };
   }
 
   async function copyCallsViewLink() {
