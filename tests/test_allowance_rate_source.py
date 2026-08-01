@@ -8,12 +8,6 @@ import pytest
 
 from codex_usage_tracker.pricing import allowance_rate_source
 from codex_usage_tracker.pricing.allowance_rate_card import update_rate_card
-from codex_usage_tracker.pricing.allowance_rate_source import (
-    OPENAI_CODEX_RATE_CARD_URL,
-    fetch_openai_codex_rate_card_html,
-    parse_openai_codex_rate_card_html,
-)
-
 
 _RATE_TABLE_HTML = """
 <html>
@@ -44,7 +38,7 @@ _RATE_TABLE_HTML = """
 
 
 def test_parse_live_rate_table_including_image_and_preview_rows() -> None:
-    parsed = parse_openai_codex_rate_card_html(_RATE_TABLE_HTML)
+    parsed = allowance_rate_source.parse_openai_codex_rate_card_html(_RATE_TABLE_HTML)
 
     assert parsed.credit_rates["gpt-5.6-sol"] == _rates(125, 12.5, 750)
     assert parsed.credit_rates["gpt-5.6-terra"] == _rates(50, 5, 300)
@@ -87,8 +81,8 @@ def test_live_fetch_uses_cache_buster_and_no_cache_headers(
         return Response()
 
     monkeypatch.setattr(allowance_rate_source, "urlopen", fake_urlopen)
-    fetched = fetch_openai_codex_rate_card_html(
-        OPENAI_CODEX_RATE_CARD_URL,
+    fetched = allowance_rate_source.fetch_openai_codex_rate_card_html(
+        allowance_rate_source.OPENAI_CODEX_RATE_CARD_URL,
         fetched_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
     )
 
@@ -127,7 +121,7 @@ def test_live_update_preserves_old_rates_as_timestamped_history(tmp_path: Path) 
 
     result = update_rate_card(
         path,
-        source_url=OPENAI_CODEX_RATE_CARD_URL,
+        source_url=allowance_rate_source.OPENAI_CODEX_RATE_CARD_URL,
         fetch_text=lambda _url: _RATE_TABLE_HTML,
     )
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -150,7 +144,7 @@ def test_live_update_preserves_old_rates_as_timestamped_history(tmp_path: Path) 
 
     second = update_rate_card(
         path,
-        source_url=OPENAI_CODEX_RATE_CARD_URL,
+        source_url=allowance_rate_source.OPENAI_CODEX_RATE_CARD_URL,
         fetch_text=lambda _url: _RATE_TABLE_HTML,
     )
     second_payload = json.loads(path.read_text(encoding="utf-8"))
