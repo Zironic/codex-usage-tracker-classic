@@ -52,13 +52,14 @@ describe('dashboard route catalog', () => {
     }
   });
 
-  it('exposes exactly three analytical destinations and Settings as a utility', () => {
+  it('adds Statistics to the primary navigation while keeping Settings separate', () => {
     expect(navigationForPhase('simplified').map(route => route.id)).toEqual([
       'home', 'explore', 'limits',
     ]);
-    expect(navItems.map(item => item.id)).toEqual(['home', 'explore', 'limits']);
+    expect(navItems.map(item => item.id)).toEqual(['home', 'reports', 'explore', 'limits']);
+    expect(navItems.find(item => item.id === 'reports')).toMatchObject({ label: 'Statistics' });
     expect(settingsNavItem.id).toBe('settings');
-    expect([...navItems, settingsNavItem]).toHaveLength(4);
+    expect([...navItems, settingsNavItem]).toHaveLength(5);
   });
 
   it('keeps handoff parameters inside each route safe-parameter boundary', () => {
