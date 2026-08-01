@@ -264,7 +264,7 @@ def test_strict_export_omits_local_identifiers(tmp_path: Path) -> None:
     payload = build_allowance_export_report(db_path=db_path).payload
     encoded = json.dumps(payload)
 
-    assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v1"
+    assert payload["schema"] == "codex-usage-tracker-allowance-evidence-export-v3"
     assert payload["privacy_mode"] == "strict"
     assert "secret-record" not in encoded
     assert "secret-session" not in encoded
