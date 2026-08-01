@@ -26,6 +26,43 @@ export type StatisticsSeries = {
   points: StatisticsSeriesPoint[];
 };
 
+export type StatisticsModelRow = {
+  model: string;
+  calls: number;
+  call_share: number | null;
+  priced_calls: number;
+  priced_call_ratio: number | null;
+  known_credits: number;
+  credit_share: number | null;
+  mean: number | null;
+  median: number | null;
+  p75: number | null;
+  p90: number | null;
+  p95: number | null;
+  minimum: number | null;
+  maximum: number | null;
+  population_standard_deviation: number | null;
+  active_days: number;
+  active_hour_buckets: number;
+  total_tokens: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  uncached_input_tokens: number;
+  output_tokens: number;
+  reasoning_output_tokens: number;
+  avg_total_tokens_per_call: number | null;
+  avg_input_tokens_per_call: number | null;
+  avg_cached_input_tokens_per_call: number | null;
+  avg_uncached_input_tokens_per_call: number | null;
+  avg_output_tokens_per_call: number | null;
+  avg_reasoning_tokens_per_call: number | null;
+  weighted_cache_ratio: number | null;
+  output_ratio: number | null;
+  reasoning_output_ratio: number | null;
+  average_context_window_percent: number | null;
+  credits_per_million_total_tokens: number | null;
+};
+
 export type StatisticsPayload = {
   schema: 'codex-usage-tracker.dashboard-statistics.v1';
   data_state: 'ready' | 'refresh_required';
@@ -40,7 +77,7 @@ export type StatisticsPayload = {
   headline?: Record<string, number | null>;
   distribution?: Record<string, number | null>;
   time_rates?: Record<string, number | null>;
-  model_rows?: Array<Record<string, number | string | null>>;
+  model_rows?: StatisticsModelRow[];
   series?: StatisticsSeries;
   hourly_series?: StatisticsSeries | null;
   heatmap?: Array<{ weekday: number; hour: number; calls: number; known_credits: number }>;
