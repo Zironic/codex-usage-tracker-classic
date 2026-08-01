@@ -11,6 +11,21 @@ export type StatisticsRequest = {
   all_time?: boolean;
 };
 
+export type StatisticsSeriesPoint = {
+  period_start: string;
+  local_period_start?: string;
+  calls: number;
+  known_credits: number;
+  rolling_7d_credits?: number;
+  rolling_30d_credits?: number;
+};
+
+export type StatisticsSeries = {
+  granularity: 'day' | 'hour';
+  timezone?: string;
+  points: StatisticsSeriesPoint[];
+};
+
 export type StatisticsPayload = {
   schema: 'codex-usage-tracker.dashboard-statistics.v1';
   data_state: 'ready' | 'refresh_required';
@@ -26,7 +41,8 @@ export type StatisticsPayload = {
   distribution?: Record<string, number | null>;
   time_rates?: Record<string, number | null>;
   model_rows?: Array<Record<string, number | string | null>>;
-  series?: { granularity: string; points: Array<Record<string, number | string | null>> };
+  series?: StatisticsSeries;
+  hourly_series?: StatisticsSeries | null;
   heatmap?: Array<{ weekday: number; hour: number; calls: number; known_credits: number }>;
   sessions?: { count: number; rows: Array<Record<string, unknown>> };
   concentration?: Record<string, number | null>;
