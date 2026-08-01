@@ -252,6 +252,45 @@ export type AllowanceEvidencePayload = {
   offline_export_action: 'build_allowance_export_report';
 };
 
+export type AllowancePricingChangeInference = {
+  detector_version: string;
+  status: 'supported_change' | 'no_supported_change' | 'insufficient_evidence' | 'unavailable';
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  reason: string | null;
+  revision: {
+    before_revision_id: string;
+    after_revision_id: string;
+    changed_models: string[];
+    configured_effective_at: string;
+    configured_effective_at_precision: string;
+    source_modified_at: string | null;
+    first_observed_at: string | null;
+  } | null;
+  estimate: {
+    effective_at_estimate: string;
+    effective_at_lower_bound: string;
+    effective_at_upper_bound: string;
+    precision: 'interval_bounded';
+    configured_distance_seconds: number;
+  } | null;
+  evidence: {
+    informative_interval_count: number;
+    before_interval_count?: number;
+    after_interval_count?: number;
+    candidate_count?: number;
+    plausible_candidate_count?: number;
+    median_changed_model_token_share?: number;
+    old_only_loss?: number;
+    new_only_loss?: number;
+    old_to_new_loss?: number;
+    new_to_old_loss?: number;
+    fit_improvement_over_best_null?: number;
+    directional_advantage_over_reversed?: number;
+    after_to_before_capacity_ratio?: number;
+  } | null;
+  caveats: string[];
+};
+
 export type AllowanceAnalysisPayload = {
   schema: 'codex-usage-tracker-allowance-analysis-v2';
   status: AllowanceAnalysisStatus;
@@ -272,6 +311,7 @@ export type AllowanceAnalysisPayload = {
     min_cycles_per_side?: number;
   };
   plan_comparison: AllowancePlanComparison | null;
+  pricing_change?: AllowancePricingChangeInference;
   quality?: AllowanceDedupeQuality;
   detector_version?: string;
   selection_correction?: string;
