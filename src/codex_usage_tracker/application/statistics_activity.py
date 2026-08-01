@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 
@@ -101,7 +101,8 @@ def _turn_key(row: dict[str, Any]) -> str:
         return f"{session}:{turn}"
     if turn:
         return f"turn:{turn}"
-    return f"record:{_text(row.get('record_id')) or id(row)}"
+    record = _text(row.get("record_id")) or _text(row.get("event_timestamp"))
+    return f"record:{record or 'unknown'}"
 
 
 def _is_subagent(row: dict[str, Any]) -> bool:
@@ -148,7 +149,9 @@ def _timestamp(value: object) -> datetime | None:
         parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError:
         return None
-    return parsed if parsed.tzinfo is not None else None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def _integer(value: object) -> int:
