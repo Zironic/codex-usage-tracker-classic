@@ -36,7 +36,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: System :: Monitoring",
 ]
-dependencies = ["mcp>=1.2.0,<2", "tiktoken>=0.13.0"]
+dependencies = ["mcp>=1.2.0,<2", "tiktoken>=0.13.0", "tzdata>=2025.2"]
 
 [project.urls]
 Homepage = "https://github.com/douglasmonsky/codex-usage-tracker"
@@ -124,25 +124,25 @@ disable = ["all"]
 enable = [
   "F",
   "E",
-  "W0101", # unreachable
-  "W0102", # dangerous-default-value
-  "W0120", # useless-else-on-loop
-  "W0123", # eval-used
-  "W0129", # assert-on-string-literal
-  "W0150", # lost-exception
-  "W0199", # assert-on-tuple
-  "W0702", # bare-except
-  "W0705", # duplicate-except
-  "W0707", # raise-missing-from
-  "W0711", # binary-op-exception
-  "W1404", # implicit-str-concat
-  "W1501", # bad-open-mode
-  "W1508", # invalid-envvar-default
-  "W1510", # subprocess-run-check
-  "R0124", # comparison-with-itself
-  "R1716", # chained-comparison
-  "R1730", # consider-using-min-builtin
-  "R1731", # consider-using-max-builtin
+  "W0101",
+  "W0102",
+  "W0120",
+  "W0123",
+  "W0129",
+  "W0150",
+  "W0199",
+  "W0702",
+  "W0705",
+  "W0707",
+  "W0711",
+  "W1404",
+  "W1501",
+  "W1508",
+  "W1510",
+  "R0124",
+  "R1716",
+  "R1730",
+  "R1731",
 ]
 
 [tool.agent_maintainer]
