@@ -7,8 +7,34 @@ from codex_usage_tracker.store.usage_statistics_queries import UsageStatisticsSe
 
 def test_usage_statistics_calculates_distribution_rates_sessions_and_models(monkeypatch) -> None:
     rows = [
-        _row("a", "2026-07-30T08:00:00Z", "gpt-sol", 10.0, "exact"),
-        _row("b", "2026-07-30T08:10:00Z", "gpt-sol", 20.0, "exact"),
+        _row(
+            "a",
+            "2026-07-30T08:00:00Z",
+            "gpt-sol",
+            10.0,
+            "exact",
+            input_tokens=100,
+            cached_input_tokens=80,
+            uncached_input_tokens=20,
+            output_tokens=10,
+            reasoning_output_tokens=4,
+            total_tokens=110,
+            context_window_percent=0.5,
+        ),
+        _row(
+            "b",
+            "2026-07-30T08:10:00Z",
+            "gpt-sol",
+            20.0,
+            "exact",
+            input_tokens=200,
+            cached_input_tokens=100,
+            uncached_input_tokens=100,
+            output_tokens=20,
+            reasoning_output_tokens=10,
+            total_tokens=220,
+            context_window_percent=0.7,
+        ),
         _row("c", "2026-07-30T10:00:00Z", "gpt-luna", None, "unpriced"),
         _row("d", "2026-07-31T09:00:00Z", "gpt-luna", 30.0, "estimated"),
     ]
@@ -37,6 +63,20 @@ def test_usage_statistics_calculates_distribution_rates_sessions_and_models(monk
     assert [row["model"] for row in payload["model_rows"]] == ["gpt-sol", "gpt-luna"]
     assert len(payload["heatmap"]) == 168
 
+    sol = payload["model_rows"][0]
+    assert sol["call_share"] == 0.5
+    assert sol["credit_share"] == 0.5
+    assert sol["avg_total_tokens_per_call"] == 165.0
+    assert sol["avg_input_tokens_per_call"] == 150.0
+    assert sol["avg_cached_input_tokens_per_call"] == 90.0
+    assert sol["avg_uncached_input_tokens_per_call"] == 60.0
+    assert sol["avg_output_tokens_per_call"] == 15.0
+    assert sol["avg_reasoning_tokens_per_call"] == 7.0
+    assert sol["weighted_cache_ratio"] == 0.6
+    assert sol["output_ratio"] == 0.090909
+    assert sol["reasoning_output_ratio"] == 0.466667
+    assert sol["average_context_window_percent"] == 0.6
+
     hourly = payload["hourly_series"]
     assert hourly["granularity"] == "hour"
     assert hourly["timezone"] == "Europe/Stockholm"
@@ -44,6 +84,32 @@ def test_usage_statistics_calculates_distribution_rates_sessions_and_models(monk
     assert hourly["points"][8]["calls"] == 2
     assert hourly["points"][9]["calls"] == 0
     assert hourly["points"][10]["calls"] == 1
+
+
+def test_model_labels_normalize_whitespace_and_keep_unpriced_credit_metrics_unknown(
+    monkeypatch,
+) -> None:
+    rows = [_row("a", "2026-07-30T08:00:00Z", "   ", None, "unpriced")]
+    monkeypatch.setattr(
+        statistics,
+        "query_usage_statistics_rows",
+        lambda **_kwargs: _selection(rows),
+    )
+
+    payload = statistics.get_usage_statistics(
+        StatisticsRequest(
+            since="2026-07-30T00:00:00Z",
+            until="2026-07-31T00:00:00Z",
+            timezone="UTC",
+        )
+    )
+
+    model = payload["model_rows"][0]
+    assert model["model"] == "Unknown model"
+    assert model["known_credits"] == 0
+    assert model["mean"] is None
+    assert model["credit_share"] is None
+    assert model["priced_call_ratio"] == 0
 
 
 def test_hourly_series_preserves_dst_skips_and_repeated_hours(monkeypatch) -> None:
@@ -76,7 +142,8 @@ def test_hourly_series_preserves_dst_skips_and_repeated_hours(monkeypatch) -> No
     )
     autumn_points = autumn["hourly_series"]["points"]
     repeated = [
-        point for point in autumn_points
+        point
+        for point in autumn_points
         if str(point["local_period_start"]).startswith("2026-10-25T02:00")
     ]
     assert len(autumn_points) == 25
@@ -141,13 +208,33 @@ def _selection(rows):
     )
 
 
-def _row(record_id: str, timestamp: str, model: str, credits: float | None, confidence: str):
+def _row(
+    record_id: str,
+    timestamp: str,
+    model: str,
+    credits: float | None,
+    confidence: str,
+    *,
+    input_tokens: int = 100,
+    cached_input_tokens: int = 50,
+    uncached_input_tokens: int = 50,
+    output_tokens: int = 10,
+    reasoning_output_tokens: int = 5,
+    total_tokens: int = 110,
+    context_window_percent: float = 0.5,
+):
     return {
         "record_id": record_id,
         "event_timestamp": timestamp,
         "model": model,
         "effort": "medium",
-        "total_tokens": 100,
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "uncached_input_tokens": uncached_input_tokens,
+        "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_output_tokens,
+        "total_tokens": total_tokens,
+        "context_window_percent": context_window_percent,
         "usage_credits": credits,
         "usage_credit_confidence": confidence,
     }
