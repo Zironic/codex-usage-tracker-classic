@@ -1,8 +1,8 @@
 # Codex Usage Tracker
 
-MCP conversational analysis is the primary way to understand Codex usage; the
-local Evidence Console is the supporting interface for verifying the exact
-calls, threads, limits, and other evidence behind the answer.
+The private localhost Agent HTTP API is how agents understand Codex usage. The
+local Evidence Console verifies the exact calls, threads, limits, and other
+supporting evidence.
 
 [![CI](https://github.com/douglasmonsky/codex-usage-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/douglasmonsky/codex-usage-tracker/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/codex-usage-tracking.svg)](https://pypi.org/project/codex-usage-tracking/)
@@ -13,7 +13,7 @@ calls, threads, limits, and other evidence behind the answer.
 > **Unofficial project:** Codex Usage Tracker is an independent open-source project. It is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI; this project only reads local log files from your machine.
 
 Codex Usage Tracker reads the JSONL logs already written by Codex and exposes
-deterministic local analysis through MCP tools. Normal refresh indexes aggregate
+deterministic local analysis through one cataloged HTTP route. Normal refresh indexes aggregate
 counters and the existing bounded local content/event index; aggregate-only
 commands retain the older posture; shareable outputs follow existing behavior.
 The index stays on your machine, and the Evidence Console lets you inspect
@@ -23,7 +23,7 @@ Cloned Codex tasks can copy historical usage rows into a new local log. The trac
 
 Built for developers using Codex locally who want to know which threads, models, subagents, and long chats are driving usage without uploading logs anywhere. The public PyPI package is [`codex-usage-tracking`](https://pypi.org/project/codex-usage-tracking/), and it installs the `codex-usage-tracker` command.
 
-After install, you get MCP tools and a companion Codex skill for questions like
+After install, you get an API-first companion Codex skill for questions like
 "what drove my usage this week?", plus a local SQLite index, CLI automation, and
 an optional Evidence Console.
 
@@ -40,7 +40,7 @@ Use your normal Python launcher for your platform: `python3` is common on macOS/
 If `codex-usage-tracker` is not found after installing with pipx, open a new terminal or add the binary directory printed by `pipx ensurepath` to your `PATH`.
 
 First install? Start with the [First Five Minutes guide](docs/first-five-minutes.md)
-for setup, MCP verification, a starter analysis question, optional evidence, and
+for setup, API verification, a starter analysis question, optional evidence, and
 safe issue diagnostics.
 
 Upgrading from 0.22? Read [Upgrading to 0.23.0](docs/upgrading-to-0.23.0.md) and
@@ -71,7 +71,7 @@ Want Codex to do it for you? Paste: `Install codex-usage-tracking with pipx, run
 
 The companion plugin and skills make deterministic local usage analysis
 conversational. After `setup` and a Codex restart or fresh task, ask Codex to
-refresh the local index, call MCP tools, explain what is driving usage, and link
+refresh the local index, call the Agent HTTP API, explain what is driving usage, and link
 material claims to local evidence. Shareable reports stay aggregate-first and
 omit indexed content unless an explicit local content tool or export is used.
 
@@ -98,7 +98,7 @@ Example conversation docs:
 ## Evidence Console Preview
 
 These synthetic screenshots document the focused local verification surface.
-New workflows use MCP analysis first and open an Evidence Console target only
+New workflows use Agent HTTP API analysis first and open an Evidence Console target only
 to verify supporting records.
 
 Home shows readiness, freshness, bounded findings, recent evidence, and starter
@@ -128,10 +128,10 @@ If this helped you track Codex usage, starring the repo helps others find it. Is
 
 ## Companion Skill And Plugin
 
-MCP is the primary analysis surface. The Codex plugin and companion usage skills
-let Codex refresh the local index, call deterministic tools, explain usage
-patterns, and return links into the supporting Evidence Console after plugin
-discovery. Setup and tool details: [MCP And Codex Skills](docs/mcp.md).
+The localhost Agent HTTP API is the agent surface. The Codex plugin and
+companion usage skills discover the running service, call deterministic operations,
+explain usage patterns, and return links into the supporting Evidence Console.
+See the [Agent HTTP API guide](docs/agent-http-api.md).
 
 <p align="center">
   <a href="docs/assets/plugin-prompts.png"><img src="docs/assets/plugin-prompts.png?v=readme-drilldown" alt="Synthetic Codex plugin prompt preview showing usage dashboard and thread investigation suggestions." width="86%"></a>
@@ -157,8 +157,8 @@ The core app is not macOS-only. The CLI, SQLite index, dashboard generator, and 
 
 Codex can quietly burn usage through long-running chats, low cache reuse,
 reasoning spikes, spawned subagents, and auto-review passes. This tool turns
-the local usage evidence already on your machine into deterministic MCP
-analysis, scriptable local APIs, and optional Evidence Console targets.
+the local usage evidence already on your machine into deterministic Agent HTTP
+API analysis and optional Evidence Console targets.
 
 Use it to answer:
 
@@ -219,7 +219,7 @@ The tracker cannot read your logged-in ChatGPT plan or live remaining usage auto
   Settings, and contextual Evidence.
 - Active-only dashboards by default, with an explicit `All history` toggle for archived sessions.
 - CLI summaries, queries, CSV export, dashboard generation, doctor checks, and support bundles.
-- MCP tools for Codex sessions that want to query local usage data.
+- A private localhost Agent HTTP API for Codex sessions that query local usage data.
 - Companion Codex skills for operational setup and conversational usage analysis.
 - Optional local pricing, Codex credit, allowance, threshold, project alias, and privacy-mode configuration, including per-call long-context pricing above 272K input tokens for OpenAI service tiers that publish long-context rates.
 
@@ -294,6 +294,7 @@ Full model: [Privacy Guide](docs/privacy.md).
 - [CLI Reference](docs/cli-reference.md)
 - [Pricing, Credits, And Allowance](docs/pricing-and-credits.md)
 - [Allowance Intelligence](docs/allowance-intelligence.md)
+- [Agent HTTP API](docs/agent-http-api.md)
 - [MCP And Codex Skills](docs/mcp.md)
 - [Privacy Guide](docs/privacy.md)
 - [Architecture](docs/architecture.md)

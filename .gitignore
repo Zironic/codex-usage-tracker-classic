@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .verify-logs/
+.agent/
 .coverage*
 coverage.xml
 node_modules/
@@ -33,3 +34,6 @@ tmp/
 
 .codex/*
 !.codex/tasks.toml
+
+# Local maintainer launch helper (branch- and machine-specific).
+/update-run.ps1

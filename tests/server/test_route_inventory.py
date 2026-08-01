@@ -66,6 +66,8 @@ def test_route_inventory_has_decision_ready_execution_metadata() -> None:
         ("POST", "/api/v2/evidence"),
         ("POST", "/api/v2/allowance"),
         ("GET", "/api/v2/capabilities"),
+        ("GET", "/api/v2/agent"),
+        ("POST", "/api/v2/agent"),
     }
     assert all(profile.output_limit_bytes is not None for profile in stable_v2)
     assert all(

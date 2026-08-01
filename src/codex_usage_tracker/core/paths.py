@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 APP_DIR = Path.home() / ".codex-usage-tracker"
+AGENT_RUNTIME_DIR = APP_DIR / "runtime"
+DEFAULT_AGENT_DESCRIPTOR_PATH = AGENT_RUNTIME_DIR / "agent-service.json"
+DEFAULT_AGENT_CREDENTIAL_PATH = AGENT_RUNTIME_DIR / "agent-service.token"
 DEFAULT_DB_PATH = APP_DIR / "usage.sqlite3"
 DEFAULT_OTEL_COMPLETIONS_DIR = APP_DIR / "otel"
 DEFAULT_DASHBOARD_PATH = APP_DIR / "dashboard.html"

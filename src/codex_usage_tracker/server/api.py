@@ -25,6 +25,7 @@ from codex_usage_tracker.dashboard.api import (
 )
 from codex_usage_tracker.server import compression_routes
 from codex_usage_tracker.server import utils as server_utils
+from codex_usage_tracker.server.agent_runtime import clear_agent_runtime, publish_agent_runtime
 from codex_usage_tracker.server.analysis_jobs import AnalysisJobRegistry
 from codex_usage_tracker.server.context_settings import (
     ContextApiState,
@@ -104,6 +105,7 @@ def serve_dashboard(
         max_entries=4,
         max_payload_bytes=8 * 1_024 * 1_024,
     )
+    server_instance_id = secrets.token_urlsafe(16)
     handler = partial(
         _UsageDashboardHandler,
         directory=str(output.parent),
@@ -122,6 +124,7 @@ def serve_dashboard(
         dashboard_path=output,
         context_chars=context_chars,
         api_token=api_token,
+        server_instance_id=server_instance_id,
         context_api_state=context_api_state,
         language=selected_language,
         refresh_lock=refresh_lock,
@@ -132,8 +135,27 @@ def serve_dashboard(
         allowance_query_cache=allowance_query_cache,
     )
     server = ThreadingHTTPServer((host, port), handler)
-    legacy_url = f"http://{_url_host(host)}:{port}/{output.name}"
-    dashboard_url = f"http://{_url_host(host)}:{port}/react-dashboard.html"
+    bound_port = int(server.server_address[1])
+    origin = f"http://{_url_host(host)}:{bound_port}"
+    legacy_url = f"{origin}/{output.name}"
+    dashboard_url = f"{origin}/react-dashboard.html"
+    enabled_scopes = (
+        "catalog_read",
+        "aggregate_read",
+        "aggregate_write",
+        "analysis_read",
+        "evidence_read",
+        "allowance_read",
+        "export",
+    )
+    if context_api_enabled:
+        enabled_scopes += ("local_index_read", "raw_context_read")
+    agent_runtime = publish_agent_runtime(
+        origin=origin,
+        api_token=api_token,
+        enabled_scopes=enabled_scopes,
+        server_instance_id=server_instance_id,
+    )
     if selected_language == "zh-Hans":
         print(f"Codex 用量仪表盘正在运行：{dashboard_url}")
         print(f"旧版仪表盘备用入口：{legacy_url}")
@@ -175,3 +197,4 @@ def serve_dashboard(
         print("\n正在停止仪表盘服务器。" if selected_language == "zh-Hans" else "\nStopping dashboard server.")
     finally:
         server.server_close()
+        clear_agent_runtime(agent_runtime)
