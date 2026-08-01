@@ -56,10 +56,10 @@ def query_usage_statistics_rows(
         if not include_archived:
             clauses.append("is_archived = 0")
         if model == "Unknown model":
-            clauses.append("model IS NULL")
+            clauses.append("(model IS NULL OR trim(model) = '')")
         elif model:
-            clauses.append("model = ?")
-            params.append(model)
+            clauses.append("trim(model) = ?")
+            params.append(model.strip())
 
         rows = connection.execute(
             f"""
@@ -69,7 +69,13 @@ def query_usage_statistics_rows(
                 thread_key,
                 model,
                 effort,
+                input_tokens,
+                cached_input_tokens,
+                uncached_input_tokens,
+                output_tokens,
+                reasoning_output_tokens,
                 total_tokens,
+                context_window_percent,
                 usage_credits,
                 usage_credit_confidence
             FROM recommendation_facts
