@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from importlib.util import find_spec
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -33,6 +34,11 @@ class StatisticsRequest:
         try:
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:
+            if find_spec("tzdata") is None:
+                raise ValueError(
+                    "IANA timezone database unavailable; reinstall the tracker dependencies "
+                    "or install the tzdata package"
+                ) from exc
             raise ValueError(f"unknown IANA timezone: {self.timezone}") from exc
         if type(self.session_gap_minutes) is not int or not 5 <= self.session_gap_minutes <= 240:
             raise ValueError("session_gap_minutes must be between 5 and 240")
