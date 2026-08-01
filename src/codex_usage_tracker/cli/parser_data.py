@@ -274,11 +274,12 @@ def _add_allowance_intelligence_parsers(
     export.add_argument(
         "--format",
         dest="export_format",
-        choices=("compact", "verbose"),
+        choices=("compact", "compact-v2", "verbose"),
         default="compact",
         help=(
-            "compact writes the LLM-oriented v2 table format; "
-            "verbose writes the compatibility v1 object format"
+            "compact writes the minute-resolution LLM-oriented v3 table format; "
+            "compact-v2 writes the date-only v2 compatibility format; "
+            "verbose writes the v1 object format"
         ),
     )
     export.add_argument(
