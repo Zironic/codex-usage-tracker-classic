@@ -19,7 +19,7 @@ class CreditRateRevision:
     """One cumulative credit-rate snapshot selected by event timestamp."""
 
     revision_id: str
-    effective_at: datetime | None
+    effective_at_epoch: float | None
     effective_at_text: str | None
     effective_at_precision: str
     credit_rates: dict[str, dict[str, float]]
@@ -42,22 +42,25 @@ def parse_rate_revisions(
     revisions: list[CreditRateRevision] = []
     cumulative_rates: dict[str, dict[str, float]] = {}
     cumulative_metadata: dict[str, dict[str, Any]] = {}
-    previous_effective_at: datetime | None = None
+    previous_effective_at: float | None = None
     baseline_seen = False
 
     for index, value in enumerate(raw):
         if not isinstance(value, dict):
             raise ValueError(f"rate_revisions[{index}] must be an object")
         effective_at_text = optional_str(value.get("effective_at"))
-        effective_at = _parse_effective_at(effective_at_text, index=index)
-        if effective_at is None:
+        effective_at_epoch = _parse_effective_at_epoch(effective_at_text, index=index)
+        if effective_at_epoch is None:
             if baseline_seen or index != 0:
                 raise ValueError("only the first rate revision may be an undated baseline")
             baseline_seen = True
-        elif previous_effective_at is not None and effective_at <= previous_effective_at:
+        elif (
+            previous_effective_at is not None
+            and effective_at_epoch <= previous_effective_at
+        ):
             raise ValueError("dated rate revisions must be strictly increasing")
-        if effective_at is not None:
-            previous_effective_at = effective_at
+        if effective_at_epoch is not None:
+            previous_effective_at = effective_at_epoch
 
         source_value = value.get("source")
         revision_source = {
@@ -79,7 +82,7 @@ def parse_rate_revisions(
             effective_at_text or "baseline"
         )
         precision = optional_str(value.get("effective_at_precision")) or (
-            "unknown" if effective_at is None else "second"
+            "unknown" if effective_at_epoch is None else "second"
         )
         snapshot_metadata = {
             model: {
@@ -93,7 +96,7 @@ def parse_rate_revisions(
         revisions.append(
             CreditRateRevision(
                 revision_id=revision_id,
-                effective_at=effective_at,
+                effective_at_epoch=effective_at_epoch,
                 effective_at_text=effective_at_text,
                 effective_at_precision=precision,
                 credit_rates={model: dict(rate) for model, rate in cumulative_rates.items()},
@@ -113,22 +116,22 @@ def revision_for_timestamp(
 ) -> CreditRateRevision | None:
     """Return the latest revision effective at one observed event timestamp."""
 
-    observed = _optional_observed_at(observed_at)
-    if observed is None:
+    observed_epoch = _optional_observed_epoch(observed_at)
+    if observed_epoch is None:
         return None
     selected: CreditRateRevision | None = None
     for revision in revisions:
-        if revision.effective_at is None:
+        if revision.effective_at_epoch is None:
             selected = revision
             continue
-        if revision.effective_at <= observed:
+        if revision.effective_at_epoch <= observed_epoch:
             selected = revision
             continue
         break
     return selected
 
 
-def _parse_effective_at(value: str | None, *, index: int) -> datetime | None:
+def _parse_effective_at_epoch(value: str | None, *, index: int) -> float | None:
     if value is None:
         return None
     try:
@@ -137,10 +140,10 @@ def _parse_effective_at(value: str | None, *, index: int) -> datetime | None:
         raise ValueError(f"invalid effective_at in rate_revisions[{index}]") from exc
     if parsed.tzinfo is None:
         raise ValueError(f"rate_revisions[{index}].effective_at must include a timezone")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(timezone.utc).timestamp()
 
 
-def _optional_observed_at(value: object) -> datetime | None:
+def _optional_observed_epoch(value: object) -> float | None:
     if not isinstance(value, str) or not value.strip():
         return None
     try:
@@ -149,4 +152,4 @@ def _optional_observed_at(value: object) -> datetime | None:
         return None
     if parsed.tzinfo is None:
         return None
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(timezone.utc).timestamp()
