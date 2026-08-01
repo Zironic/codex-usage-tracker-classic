@@ -15,14 +15,7 @@ def test_usage_statistics_calculates_distribution_rates_sessions_and_models(monk
     monkeypatch.setattr(
         statistics,
         "query_usage_statistics_rows",
-        lambda **_kwargs: UsageStatisticsSelection(
-            rows=rows,
-            data_state="ready",
-            reason=None,
-            source_generation=4,
-            fact_generation=4,
-            materialized_call_count=4,
-        ),
+        lambda **_kwargs: _selection(rows),
     )
 
     payload = statistics.get_usage_statistics(
@@ -43,6 +36,71 @@ def test_usage_statistics_calculates_distribution_rates_sessions_and_models(monk
     assert payload["model_transitions"]["switch_count"] == 0
     assert [row["model"] for row in payload["model_rows"]] == ["gpt-sol", "gpt-luna"]
     assert len(payload["heatmap"]) == 168
+
+    hourly = payload["hourly_series"]
+    assert hourly["granularity"] == "hour"
+    assert hourly["timezone"] == "Europe/Stockholm"
+    assert len(hourly["points"]) == 48
+    assert hourly["points"][8]["calls"] == 2
+    assert hourly["points"][9]["calls"] == 0
+    assert hourly["points"][10]["calls"] == 1
+
+
+def test_hourly_series_preserves_dst_skips_and_repeated_hours(monkeypatch) -> None:
+    monkeypatch.setattr(
+        statistics,
+        "query_usage_statistics_rows",
+        lambda **_kwargs: _selection([]),
+    )
+
+    spring = statistics.get_usage_statistics(
+        StatisticsRequest(
+            since="2026-03-28T23:00:00Z",
+            until="2026-03-29T22:00:00Z",
+            timezone="Europe/Stockholm",
+        )
+    )
+    spring_points = spring["hourly_series"]["points"]
+    assert len(spring_points) == 23
+    assert not any(
+        str(point["local_period_start"]).startswith("2026-03-29T02:00")
+        for point in spring_points
+    )
+
+    autumn = statistics.get_usage_statistics(
+        StatisticsRequest(
+            since="2026-10-24T22:00:00Z",
+            until="2026-10-25T23:00:00Z",
+            timezone="Europe/Stockholm",
+        )
+    )
+    autumn_points = autumn["hourly_series"]["points"]
+    repeated = [
+        point for point in autumn_points
+        if str(point["local_period_start"]).startswith("2026-10-25T02:00")
+    ]
+    assert len(autumn_points) == 25
+    assert len(repeated) == 2
+    assert repeated[0]["local_period_start"] != repeated[1]["local_period_start"]
+
+
+def test_hourly_series_is_omitted_for_long_ranges(monkeypatch) -> None:
+    monkeypatch.setattr(
+        statistics,
+        "query_usage_statistics_rows",
+        lambda **_kwargs: _selection([]),
+    )
+
+    payload = statistics.get_usage_statistics(
+        StatisticsRequest(
+            since="2026-05-01T00:00:00Z",
+            until="2026-08-01T00:00:00Z",
+            timezone="UTC",
+        )
+    )
+
+    assert payload["series"]["granularity"] == "day"
+    assert payload["hourly_series"] is None
 
 
 def test_usage_statistics_returns_refresh_required_without_stale_values(monkeypatch) -> None:
@@ -70,6 +128,17 @@ def test_usage_statistics_returns_refresh_required_without_stale_values(monkeypa
     assert payload["data_state"] == "refresh_required"
     assert payload["reason"] == "recommendation_facts_stale"
     assert "headline" not in payload
+
+
+def _selection(rows):
+    return UsageStatisticsSelection(
+        rows=rows,
+        data_state="ready",
+        reason=None,
+        source_generation=4,
+        fact_generation=4,
+        materialized_call_count=len(rows),
+    )
 
 
 def _row(record_id: str, timestamp: str, model: str, credits: float | None, confidence: str):
