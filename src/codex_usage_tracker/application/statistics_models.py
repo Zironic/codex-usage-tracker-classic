@@ -21,6 +21,8 @@ class StatisticsRequest:
     history: HistoryScope = "active"
     model: str | None = None
     session_gap_minutes: int = 30
+    active_gap_cap_minutes: int = 5
+    comparison_at: str | None = None
     top_limit: int = 10
     all_time: bool = False
 
@@ -42,12 +44,28 @@ class StatisticsRequest:
             raise ValueError(f"unknown IANA timezone: {self.timezone}") from exc
         if type(self.session_gap_minutes) is not int or not 5 <= self.session_gap_minutes <= 240:
             raise ValueError("session_gap_minutes must be between 5 and 240")
+        if (
+            type(self.active_gap_cap_minutes) is not int
+            or not 0 <= self.active_gap_cap_minutes <= 60
+        ):
+            raise ValueError("active_gap_cap_minutes must be between 0 and 60")
         if type(self.top_limit) is not int or not 1 <= self.top_limit <= 50:
             raise ValueError("top_limit must be between 1 and 50")
         if type(self.all_time) is not bool:
             raise ValueError("all_time must be a boolean")
         if self.model is not None and not self.model.strip():
             raise ValueError("model must be non-empty when provided")
+        if self.comparison_at is not None:
+            comparison = parse_statistics_timestamp(self.comparison_at, "comparison_at")
+            if not start < comparison < end:
+                raise ValueError("comparison_at must fall inside the selected range")
+
+    def comparison_timestamp(self) -> datetime | None:
+        """Return the optional arbitrary before/after breakpoint in UTC."""
+
+        if self.comparison_at is None:
+            return None
+        return parse_statistics_timestamp(self.comparison_at, "comparison_at")
 
 
 def parse_statistics_timestamp(value: str, name: str) -> datetime:
