@@ -91,8 +91,11 @@ def _replace_private_turn_keys(payload: dict[str, object]) -> None:
         for item in candidates:
             if not isinstance(item, dict):
                 continue
-            raw = item.pop("turn_group", None)
+            raw = item.get("turn_group")
+            if isinstance(raw, int):
+                continue
             if not isinstance(raw, str):
+                item.pop("turn_group", None)
                 continue
             if raw not in seen:
                 seen[raw] = next_index
