@@ -87,7 +87,11 @@ def build_model_rows(
     ]
     return sorted(
         rows,
-        key=lambda row: (-float(row["known_credits"]), -int(row["calls"]), str(row["model"])),
+        key=lambda row: (
+            -_object_number(row.get("known_credits")),
+            -_object_number(row.get("calls")),
+            str(row.get("model") or ""),
+        ),
     )
 
 
@@ -153,6 +157,12 @@ def _model_row(
             )
         },
     }
+
+
+def _object_number(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return 0.0
+    return float(value)
 
 
 def _nonnegative_number(value: object) -> float:
