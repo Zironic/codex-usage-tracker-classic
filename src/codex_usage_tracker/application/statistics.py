@@ -139,7 +139,8 @@ def _aggregate(
                 sessions.append(current)
             current = _new_session(observed, model)
             previous_model = None
-        assert current is not None
+        if current is None:
+            raise RuntimeError("activity session state was not initialized")
         current["end_at"] = observed
         current["calls"] += 1
         current["models"].add(model)
